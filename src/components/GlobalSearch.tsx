@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Search, X, CalendarDays, ClipboardCheck, BarChart3, AlertTriangle, LayoutDashboard } from 'lucide-react'
+import { useRole } from '../context/RoleContext'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,7 @@ interface Props {
 }
 
 export default function GlobalSearch({ open, onClose, onNavigate }: Props) {
+  const { canSeeNav } = useRole()
   const [query, setQuery] = useState('')
   const [focusIndex, setFocusIndex] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -69,7 +71,9 @@ export default function GlobalSearch({ open, onClose, onNavigate }: Props) {
       )
     : []
 
-  const flatResults = GROUPS.flatMap((g) => results.filter((r) => r.group === g))
+  const flatResults = GROUPS.flatMap((g) =>
+    results.filter((r) => r.group === g && canSeeNav(r.navTarget)),
+  )
 
   useEffect(() => {
     if (open) {

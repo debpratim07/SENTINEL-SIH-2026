@@ -1,29 +1,43 @@
 {
-  "name": "figma-make-app",
+  "name": "@sentinel/web",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
-    "build": "vite build",
-    "preview": "vite preview",
-    "format": "oxfmt"
+    "dev": "vite --host 0.0.0.0 --configLoader native",
+    "dev:api": "pnpm --filter @sentinel/api dev",
+    "build": "vite build --configLoader native",
+    "build:api": "pnpm --filter @sentinel/api build",
+    "preview": "vite preview --configLoader native",
+    "format": "oxfmt",
+    "typecheck": "tsc --noEmit",
+    "typecheck:api": "pnpm --filter @sentinel/api typecheck",
+    "test": "vitest run --configLoader native",
+    "check": "pnpm typecheck && pnpm typecheck:api && pnpm test && pnpm build && pnpm build:api"
   },
   "dependencies": {
+    "@sentinel/domain": "workspace:*",
+    "@supabase/supabase-js": "^2.112.4",
     "lucide-react": "^1.34.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^3.10.1"
+    "react-router-dom": "^7.18.3",
+    "recharts": "^3.10.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "jsdom": "^30.0.1",
     "oxfmt": "^0.2.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
-    "vite": "^8.0.5"
+    "vite": "^8.0.5",
+    "vitest": "^4.1.11"
   }
 }

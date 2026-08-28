@@ -11,7 +11,7 @@ interface Props {
 }
 
 export function ProfileDropdown({ open, onClose, onNavigate, dark, onToggleDark }: Props) {
-  const { user, setRole } = useRole()
+  const { user, setRole, canSeeNav, canSimulateRoles } = useRole()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -69,7 +69,7 @@ export function ProfileDropdown({ open, onClose, onNavigate, dark, onToggleDark 
         {[
           { label: 'My Profile', nav: 'profile' },
           { label: 'Preferences', nav: 'admin' },
-        ].map((item) => (
+        ].filter((item) => item.nav !== 'admin' || canSeeNav('admin')).map((item) => (
           <button
             key={item.label}
             role="menuitem"
@@ -98,28 +98,29 @@ export function ProfileDropdown({ open, onClose, onNavigate, dark, onToggleDark 
         </button>
       </div>
 
-      {/* Role switcher — prototype only */}
-      <div style={{ borderTop: '1px solid var(--c-border)' }} className="py-1">
-        <div className="px-4 py-1.5 text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-          Prototype: Switch Role
+      {canSimulateRoles && (
+        <div style={{ borderTop: '1px solid var(--c-border)' }} className="py-1">
+          <div className="px-4 py-1.5 text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
+            Prototype: Switch Role
+          </div>
+          {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
+            <button
+              key={role}
+              role="menuitem"
+              onClick={() => { setRole(role); onClose() }}
+              className="flex w-full items-center justify-between px-4 py-2 text-[12px]"
+              style={{ color: role === user.role ? '#F46F29' : 'var(--c-muted)' }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-brand-tint)')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {ROLE_LABELS[role]}
+              {role === user.role && (
+                <span className="text-[10px] font-bold" style={{ color: '#F46F29' }}>Active</span>
+              )}
+            </button>
+          ))}
         </div>
-        {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
-          <button
-            key={role}
-            role="menuitem"
-            onClick={() => { setRole(role); onClose() }}
-            className="flex w-full items-center justify-between px-4 py-2 text-[12px]"
-            style={{ color: role === user.role ? '#F46F29' : 'var(--c-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-brand-tint)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            {ROLE_LABELS[role]}
-            {role === user.role && (
-              <span className="text-[10px] font-bold" style={{ color: '#F46F29' }}>Active</span>
-            )}
-          </button>
-        ))}
-      </div>
+      )}
 
       {/* Sign out */}
       <div style={{ borderTop: '1px solid var(--c-border)' }}>
