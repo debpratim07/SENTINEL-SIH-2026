@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { RoleProvider, useRole } from './context/RoleContext'
+import { ScheduleDataProvider } from './context/ScheduleDataContext'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import CaptureChooser from './components/capture/CaptureChooser'
@@ -314,7 +315,9 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <RoleProvider>
-          <AppShell />
+          <ScheduleDataProvider>
+            <AppShell />
+          </ScheduleDataProvider>
         </RoleProvider>
       </AuthProvider>
     </BrowserRouter>

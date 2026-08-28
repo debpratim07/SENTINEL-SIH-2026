@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -10,18 +10,20 @@ import {
 } from 'lucide-react'
 import { FilterDropdown } from '../../components/FilterDropdown'
 import {
-  scheduleTree,
   flattenTree,
-  defaultExpandedIds,
+  flattenAll,
+  getAllGroupIds,
   STATUS_CONFIG,
   TRUST_CONFIG,
   fmtDate,
   type ScheduleActivity,
   type ScheduleStatus,
 } from '../../data/scheduleData'
+import { useScheduleData } from '../../context/ScheduleDataContext'
 
 interface Props {
   onSelectActivity: (id: string) => void
+  pageSearch?: string
 }
 
 function StatusBadge({ status }: { status: ScheduleStatus }) {
@@ -93,9 +95,6 @@ function VarianceCell({ days }: { days: number | null }) {
   )
 }
 
-const DISCIPLINES = ['All', 'Piping', 'Rotating Equipment', 'Civil', 'Electrical']
-const AREAS = ['All', 'Area A', 'Area B', 'Utility Block', 'Multiple']
-
 const STATUS_OPTIONS = [
   { value: 'in-progress',    label: 'In Progress' },
   { value: 'started-late',   label: 'Started Late' },
@@ -154,14 +153,28 @@ function filterTree(
     .filter(Boolean) as ScheduleActivity[]
 }
 
-export default function ScheduleActivities({ onSelectActivity }: Props) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(defaultExpandedIds))
+export default function ScheduleActivities({ onSelectActivity, pageSearch = '' }: Props) {
+  const { tree, metrics } = useScheduleData()
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => getAllGroupIds(tree))
   const [search, setSearch] = useState('')
   const [discipline, setDiscipline] = useState('All')
   const [area, setArea] = useState('All')
   const [filterStatus, setFilterStatus] = useState('')
   const [filterVariance, setFilterVariance] = useState('')
   const [filterLevel, setFilterLevel] = useState('')
+  const leafActivities = useMemo(() => flattenAll(tree).filter((activity) => !activity.isGroup), [tree])
+  const disciplines = useMemo(
+    () => ['All', ...new Set(leafActivities.map((activity) => activity.discipline))],
+    [leafActivities],
+  )
+  const areas = useMemo(
+    () => ['All', ...new Set(leafActivities.map((activity) => activity.area))],
+    [leafActivities],
+  )
+
+  useEffect(() => {
+    setExpandedIds(getAllGroupIds(tree))
+  }, [tree])
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -180,7 +193,7 @@ export default function ScheduleActivities({ onSelectActivity }: Props) {
         if (item.children) traverse(item.children)
       }
     }
-    traverse(scheduleTree)
+    traverse(tree)
     setExpandedIds(all)
   }
 
@@ -188,8 +201,11 @@ export default function ScheduleActivities({ onSelectActivity }: Props) {
     setExpandedIds(new Set())
   }
 
-  const filteredTree = filterTree(scheduleTree, discipline, area, search, filterStatus, filterVariance, filterLevel)
-  const rows = flattenTree(filteredTree, expandedIds)
+  const filteredTree = filterTree(tree, discipline, area, search, filterStatus, filterVariance, filterLevel)
+  const pageFilteredTree = pageSearch.trim()
+    ? filterTree(filteredTree, 'All', 'All', pageSearch, '', '', '')
+    : filteredTree
+  const rows = flattenTree(pageFilteredTree, expandedIds)
   const hasFilters = discipline !== 'All' || area !== 'All' || search !== '' || !!filterStatus || !!filterVariance || !!filterLevel
 
   return (
@@ -204,11 +220,11 @@ export default function ScheduleActivities({ onSelectActivity }: Props) {
         }}
       >
         {[
-          { label: 'Actual Progress', value: '68.4%', color: '#F46F29' },
-          { label: 'Planned Progress', value: '71.2%', color: 'var(--c-text)' },
-          { label: 'Variance', value: '−2.8%', color: '#D97706' },
-          { label: 'Started Late', value: '23', color: '#D97706' },
-          { label: 'Finished Late', value: '11', color: '#D97706' },
+          { label: 'Actual Progress', value: `${metrics.actualProgress.toFixed(1)}%`, color: '#F46F29' },
+          { label: 'Planned Progress', value: `${metrics.plannedProgress.toFixed(1)}%`, color: 'var(--c-text)' },
+          { label: 'Variance', value: `${metrics.variance > 0 ? '+' : metrics.variance < 0 ? '−' : ''}${Math.abs(metrics.variance).toFixed(1)}%`, color: metrics.variance === 0 ? '#16A34A' : '#D97706' },
+          { label: 'Started Late', value: String(metrics.startedLate), color: '#D97706' },
+          { label: 'Finished Late', value: String(metrics.finishedLate), color: '#D97706' },
         ].map((m, i) => (
           <div key={m.label} className="flex items-center gap-3">
             {i > 0 && (
@@ -297,7 +313,7 @@ export default function ScheduleActivities({ onSelectActivity }: Props) {
             fontFamily: 'var(--font-ui)',
           }}
         >
-          {DISCIPLINES.map((d) => (
+          {disciplines.map((d) => (
             <option key={d} value={d}>
               {d === 'All' ? 'Discipline ▾' : d}
             </option>
@@ -317,7 +333,7 @@ export default function ScheduleActivities({ onSelectActivity }: Props) {
             fontFamily: 'var(--font-ui)',
           }}
         >
-          {AREAS.map((a) => (
+          {areas.map((a) => (
             <option key={a} value={a}>
               {a === 'All' ? 'Area ▾' : a}
             </option>

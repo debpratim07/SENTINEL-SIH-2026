@@ -1,4 +1,4 @@
-import type { CompleteUploadInput, InitiateUploadInput } from '@sentinel/domain'
+import type { CompleteUploadInput, InitiateUploadInput, ProjectScheduleResponse } from '@sentinel/domain'
 import { environment } from './environment'
 
 interface ApiErrorBody {
@@ -52,5 +52,11 @@ export function completeReportUpload(fileId: string, input: CompleteUploadInput,
   return apiRequest<CompletedUpload>(`/v1/uploads/${encodeURIComponent(fileId)}/complete`, token, {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+export function getProjectSchedule(projectId: string, token: string) {
+  return apiRequest<ProjectScheduleResponse>(`/v1/projects/${encodeURIComponent(projectId)}/schedule`, token, {
+    method: 'GET',
   })
 }

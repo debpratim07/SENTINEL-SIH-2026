@@ -7,6 +7,7 @@ import type { ServerConfig } from './config'
 import { createDatabase, type Database } from './database'
 import { HttpError } from './errors'
 import { registerReviewRoutes } from './routes/reviews'
+import { registerScheduleRoutes } from './routes/schedule'
 import { registerUploadRoutes } from './routes/uploads'
 
 interface AppDependencies {
@@ -69,6 +70,7 @@ export async function buildApp(config: ServerConfig, overrides: AppDependencies 
 
   await registerUploadRoutes(app, { database, supabase })
   await registerReviewRoutes(app, { database, supabase })
+  await registerScheduleRoutes(app, { database, supabase })
 
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {

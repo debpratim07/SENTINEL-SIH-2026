@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Search, SlidersHorizontal, Download, X } from 'lucide-react'
 import ScheduleActivities from './ScheduleActivities'
 import ScheduleTimeline from './ScheduleTimeline'
+import { useScheduleData } from '../../context/ScheduleDataContext'
+import { flattenAll } from '../../data/scheduleData'
 
 type Tab = 'activities' | 'timeline'
 
@@ -9,10 +11,8 @@ interface Props {
   onSelectActivity: (id: string) => void
 }
 
-const DISCIPLINES = ['Piping', 'Rotating Equipment', 'Civil', 'Electrical']
-const AREAS = ['Area A', 'Area B', 'Utility Block', 'Multiple']
-
 export default function SchedulePage({ onSelectActivity }: Props) {
+  const schedule = useScheduleData()
   const [tab, setTab] = useState<Tab>('activities')
   const [search, setSearch] = useState('')
   const [discipline, setDiscipline] = useState('')
@@ -20,6 +20,15 @@ export default function SchedulePage({ onSelectActivity }: Props) {
   const [filtersOpen, setFiltersOpen] = useState(false)
 
   const hasFilters = discipline || area
+  const leafActivities = useMemo(() => flattenAll(schedule.tree).filter((activity) => !activity.isGroup), [schedule.tree])
+  const disciplines = useMemo(
+    () => [...new Set(leafActivities.map((activity) => activity.discipline))].sort(),
+    [leafActivities],
+  )
+  const areas = useMemo(
+    () => [...new Set(leafActivities.map((activity) => activity.area))].sort(),
+    [leafActivities],
+  )
 
   function clearFilters() {
     setDiscipline('')
@@ -148,7 +157,7 @@ export default function SchedulePage({ onSelectActivity }: Props) {
                       }}
                     >
                       <option value="">All disciplines</option>
-                      {DISCIPLINES.map((d) => (
+                      {disciplines.map((d) => (
                         <option key={d} value={d}>{d}</option>
                       ))}
                     </select>
@@ -169,7 +178,7 @@ export default function SchedulePage({ onSelectActivity }: Props) {
                       }}
                     >
                       <option value="">All areas</option>
-                      {AREAS.map((a) => (
+                      {areas.map((a) => (
                         <option key={a} value={a}>{a}</option>
                       ))}
                     </select>
@@ -190,6 +199,8 @@ export default function SchedulePage({ onSelectActivity }: Props) {
 
             {/* Export */}
             <button
+              onClick={schedule.exportCsv}
+              disabled={schedule.loading || schedule.tree.length === 0}
               className="flex items-center gap-1.5 rounded-[9px] px-3 py-1.5 text-[12px] font-medium transition-colors duration-150"
               style={{
                 background: 'var(--c-card)',
@@ -224,13 +235,27 @@ export default function SchedulePage({ onSelectActivity }: Props) {
 
       {/* Content — single vertical scroll container for this tab */}
       <div style={{ flex: 1, overflow: 'auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        {tab === 'activities' ? (
-          <ScheduleActivities onSelectActivity={onSelectActivity} />
+        {schedule.loading ? (
+          <div className="flex flex-1 items-center justify-center text-[13px]" style={{ color: 'var(--c-muted)' }}>
+            Loading project schedule…
+          </div>
+        ) : schedule.error ? (
+          <div className="flex flex-1 items-center justify-center p-8">
+            <div className="text-center">
+              <p className="text-[13px]" style={{ color: 'var(--c-muted)' }}>{schedule.error}</p>
+              <button onClick={schedule.reload} className="mt-3 text-[12px] font-semibold" style={{ color: '#F46F29' }}>
+                Retry
+              </button>
+            </div>
+          </div>
+        ) : tab === 'activities' ? (
+          <ScheduleActivities onSelectActivity={onSelectActivity} pageSearch={search} />
         ) : (
           <ScheduleTimeline
             onSelectActivity={onSelectActivity}
             discipline={discipline}
             area={area}
+            search={search}
           />
         )}
       </div>

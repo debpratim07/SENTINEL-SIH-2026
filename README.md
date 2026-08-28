@@ -25,6 +25,8 @@ Requirements: Node.js 24, pnpm 11, Docker and the Supabase CLI.
 6. Start the API with `pnpm dev:api`.
 7. Start the ingestion worker with `pnpm --filter @sentinel/api dev:worker`.
 
+The web Schedule view reads the latest published schedule through the authenticated Node endpoint `GET /v1/projects/:projectId/schedule`. In demo-auth mode it intentionally uses the approved synthetic Figma dataset instead.
+
 Without Supabase browser variables, the web app runs in explicit demo-auth mode. Demo mode is for UI development only and must be disabled in production.
 
 ## Verification

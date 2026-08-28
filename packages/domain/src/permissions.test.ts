@@ -18,4 +18,17 @@ describe('role permissions', () => {
     expect(hasPermission('project-manager', 'capture')).toBe(false)
     expect(hasPermission('project-manager', 'resolve-exception')).toBe(false)
   })
+
+  it('allows every project role to read the approved schedule view', () => {
+    for (const role of [
+      'site-supervisor',
+      'discipline-engineer',
+      'planner',
+      'project-controls',
+      'project-manager',
+      'administrator',
+    ] as const) {
+      expect(hasPermission(role, 'view-schedule')).toBe(true)
+    }
+  })
 })

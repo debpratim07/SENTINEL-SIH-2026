@@ -12,10 +12,12 @@
 
 ## Vertical slice 1 — schedules and membership
 
+- Authenticated project-schedule query and UI adapter — complete
+- Database-backed schedule metrics, hierarchy, filters, detail routes and CSV export — complete
 - Administration forms backed by API mutations
 - User invitations and project membership management
 - Schedule spreadsheet import, validation and publish workflow
-- Replace schedule and global-search mock datasets with database queries
+- Replace the remaining global-search mock dataset with database queries
 
 ## Vertical slice 2 — reports and review
 

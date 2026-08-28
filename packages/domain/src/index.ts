@@ -20,6 +20,7 @@ export const permissions = [
   'resolve-exception',
   'schedule-integrity',
   'admin-config',
+  'view-schedule',
   'view-actuals',
   'view-exceptions',
   'view-performance',
@@ -30,22 +31,22 @@ export const permissions = [
 export type Permission = (typeof permissions)[number]
 
 export const rolePermissions: Record<UserRole, readonly Permission[]> = {
-  'site-supervisor': ['capture', 'upload-report', 'clarification-response', 'view-actuals'],
+  'site-supervisor': ['capture', 'upload-report', 'clarification-response', 'view-schedule', 'view-actuals'],
   'discipline-engineer': [
-    'capture', 'upload-report', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights',
+    'capture', 'upload-report', 'view-schedule', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights',
   ],
   planner: [
     'capture', 'upload-report', 'review-match', 'verify-actual', 'resolve-exception',
-    'view-audit', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights',
+    'view-audit', 'view-schedule', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights',
   ],
   'project-controls': [
     'capture', 'upload-report', 'review-match', 'verify-actual', 'resolve-exception',
-    'view-audit', 'schedule-integrity', 'view-actuals', 'view-exceptions',
+    'view-audit', 'schedule-integrity', 'view-schedule', 'view-actuals', 'view-exceptions',
     'view-performance', 'view-insights',
   ],
-  'project-manager': ['view-actuals', 'view-exceptions', 'view-performance', 'view-insights'],
+  'project-manager': ['view-schedule', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights'],
   administrator: [
-    'admin-config', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights', 'view-audit',
+    'admin-config', 'view-schedule', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights', 'view-audit',
   ],
 }
 
@@ -110,4 +111,51 @@ export interface AuthenticatedUser {
   email: string
   name: string
   memberships: ProjectMembership[]
+}
+
+export type ScheduleActivityStatus =
+  | 'not-started'
+  | 'in-progress'
+  | 'started-late'
+  | 'finished-late'
+  | 'missing-actual'
+  | 'complete'
+
+export type ScheduleTrustLevel = 'verified' | 'unverified' | 'missing'
+
+export interface ScheduleActivitySummary {
+  id: string
+  externalId: string
+  name: string
+  description: string | null
+  level: 'L3' | 'L4' | 'L5' | 'L6'
+  discipline: string
+  area: string
+  plannedStart: string | null
+  plannedFinish: string | null
+  actualStart: string | null
+  actualFinish: string | null
+  plannedProgress: number
+  actualProgress: number
+  startVarianceDays: number | null
+  finishVarianceDays: number | null
+  status: ScheduleActivityStatus
+  trust: ScheduleTrustLevel
+}
+
+export interface ScheduleMetrics {
+  actualProgress: number
+  plannedProgress: number
+  variance: number
+  startedLate: number
+  finishedLate: number
+}
+
+export interface ProjectScheduleResponse {
+  projectId: string
+  today: string
+  importVersion: number | null
+  importedAt: string | null
+  activities: ScheduleActivitySummary[]
+  metrics: ScheduleMetrics
 }
