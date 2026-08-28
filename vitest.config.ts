@@ -1,25 +1,19 @@
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 
 const rootDirectory = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       '@': path.resolve(rootDirectory, 'src'),
       '@sentinel/domain': path.resolve(rootDirectory, 'packages/domain/src/index.ts'),
     },
   },
-  server: {
-    host: '0.0.0.0',
-    port: Number(process.env.PORT ?? 5173),
-  },
-  preview: {
-    host: '0.0.0.0',
-    port: Number(process.env.PORT ?? 4173),
+  test: {
+    environment: 'jsdom',
+    pool: 'threads',
+    setupFiles: ['./src/test/setup.ts'],
   },
 })

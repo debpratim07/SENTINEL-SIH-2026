@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 
 interface Props {
-  onLogin: () => void
+  onLogin: (email: string, password: string) => Promise<void>
+  onForgotPassword: (email: string) => Promise<void>
+  isDemoMode: boolean
 }
 
 function SentinelFullLogo() {
@@ -36,7 +38,7 @@ function SentinelFullLogo() {
 
 type LoginView = 'login' | 'forgot'
 
-export default function LoginPage({ onLogin }: Props) {
+export default function LoginPage({ onLogin, onForgotPassword, isDemoMode }: Props) {
   const [view, setView] = useState<LoginView>('login')
   const [email, setEmail] = useState('arjun.mehta@sentinel.demo')
   const [password, setPassword] = useState('sentinel123')
@@ -47,9 +49,7 @@ export default function LoginPage({ onLogin }: Props) {
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotSent, setForgotSent] = useState(false)
 
-  const DEMO_EMAIL = 'arjun.mehta@sentinel.demo'
-
-  function handleSignIn(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!email || !password) {
@@ -57,19 +57,24 @@ export default function LoginPage({ onLogin }: Props) {
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      if (email === DEMO_EMAIL) {
-        onLogin()
-      } else {
-        setLoading(false)
-        setError('Invalid credentials. Use arjun.mehta@sentinel.demo / sentinel123 for the demo.')
-      }
-    }, 900)
+    try {
+      await onLogin(email, password)
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : 'Unable to sign in. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  function handleForgot(e: React.FormEvent) {
+  async function handleForgot(e: React.FormEvent) {
     e.preventDefault()
-    setForgotSent(true)
+    setError('')
+    try {
+      await onForgotPassword(forgotEmail)
+      setForgotSent(true)
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : 'Unable to request a reset link.')
+    }
   }
 
   const fieldStyle = {
@@ -234,9 +239,11 @@ export default function LoginPage({ onLogin }: Props) {
               </button>
             </form>
 
-            <p className="mt-5 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Demo credentials are prefilled
-            </p>
+            {isDemoMode && (
+              <p className="mt-5 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
+                Demo credentials are prefilled
+              </p>
+            )}
           </div>
         ) : forgotSent ? (
           <div
@@ -253,7 +260,7 @@ export default function LoginPage({ onLogin }: Props) {
             </div>
             <h2 className="mb-2 text-[18px] font-bold" style={{ color: 'var(--c-text)' }}>Check your email</h2>
             <p className="mb-6 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-              If {forgotEmail} has a SENTINEL account, a reset link will be sent. This is a prototype — no real email is delivered.
+              If {forgotEmail} has a SENTINEL account, a reset link will be sent.
             </p>
             <button
               onClick={() => { setView('login'); setForgotSent(false); setForgotEmail('') }}
@@ -305,9 +312,11 @@ export default function LoginPage({ onLogin }: Props) {
                 Send Reset Link
               </button>
             </form>
-            <p className="mt-4 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Prototype — no real email is delivered
-            </p>
+            {isDemoMode && (
+              <p className="mt-4 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
+                Demo mode does not deliver email
+              </p>
+            )}
           </div>
         )}
       </div>

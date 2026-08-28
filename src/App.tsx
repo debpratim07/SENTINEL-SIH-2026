@@ -1,68 +1,107 @@
-import { useState, useEffect, useCallback } from 'react'
-import { RoleProvider } from './context/RoleContext'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { BrowserRouter, useLocation, useNavigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import { RoleProvider, useRole } from './context/RoleContext'
+import { ScheduleDataProvider } from './context/ScheduleDataContext'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
-import Dashboard from './components/dashboard/Dashboard'
-import ReviewQueue from './pages/ReviewQueue'
-import SchedulePage from './pages/schedule/SchedulePage'
-import ScheduleActivityDetail from './pages/schedule/ScheduleActivityDetail'
-import Reports from './pages/Reports'
-import ReportAnalysis from './pages/ReportAnalysis'
 import CaptureChooser from './components/capture/CaptureChooser'
 import LogWithSentinelDrawer from './components/capture/LogWithSentinelDrawer'
 import UploadReportDrawer from './components/capture/UploadReportDrawer'
-import ActualsPage from './pages/actuals/ActualsPage'
-import ActualDetail from './pages/actuals/ActualDetail'
-import ExceptionsPage from './pages/exceptions/ExceptionsPage'
-import ExceptionDetail from './pages/exceptions/ExceptionDetail'
-import PerformancePage from './pages/performance/PerformancePage'
-import DataQualityPage from './pages/insights/DataQualityPage'
-import ExecutionKnowledgePage from './pages/insights/ExecutionKnowledgePage'
-import AuditLogPage from './pages/audit/AuditLogPage'
-import AdminPage from './pages/admin/AdminPage'
 import LoginPage from './pages/auth/LoginPage'
 import GlobalSearch from './components/GlobalSearch'
 import NotificationsPopover from './components/NotificationsPopover'
 import { ProfileDropdown, ProfilePage } from './components/ProfileMenu'
 import SentinelGuide from './components/SentinelGuide'
+import { knownRoutes, parseRoute, routeFor } from './routing'
+
+const Dashboard = lazy(() => import('./components/dashboard/Dashboard'))
+const ReviewQueue = lazy(() => import('./pages/ReviewQueue'))
+const SchedulePage = lazy(() => import('./pages/schedule/SchedulePage'))
+const ScheduleActivityDetail = lazy(() => import('./pages/schedule/ScheduleActivityDetail'))
+const Reports = lazy(() => import('./pages/Reports'))
+const ReportAnalysis = lazy(() => import('./pages/ReportAnalysis'))
+const ActualsPage = lazy(() => import('./pages/actuals/ActualsPage'))
+const ActualDetail = lazy(() => import('./pages/actuals/ActualDetail'))
+const ExceptionsPage = lazy(() => import('./pages/exceptions/ExceptionsPage'))
+const ExceptionDetail = lazy(() => import('./pages/exceptions/ExceptionDetail'))
+const PerformancePage = lazy(() => import('./pages/performance/PerformancePage'))
+const DataQualityPage = lazy(() => import('./pages/insights/DataQualityPage'))
+const ExecutionKnowledgePage = lazy(() => import('./pages/insights/ExecutionKnowledgePage'))
+const AuditLogPage = lazy(() => import('./pages/audit/AuditLogPage'))
+const AdminPage = lazy(() => import('./pages/admin/AdminPage'))
 
 const OVERFLOW_HIDDEN_ROUTES = new Set([
   'schedule', 'reports', 'actuals', 'exceptions', 'audit-log', 'admin', 'review-queue',
 ])
 
+function LoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center" style={{ background: 'var(--c-page)', color: 'var(--c-muted)' }}>
+      <span className="text-[13px]">Loading SENTINEL…</span>
+    </div>
+  )
+}
+
+function UnavailablePage({ unauthorized, onReturn }: { unauthorized: boolean; onReturn: () => void }) {
+  return (
+    <div className="flex h-full items-center justify-center" style={{ padding: 32 }}>
+      <div className="text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
+          style={{ background: 'var(--c-brand-tint)' }}>
+          <span className="text-[20px]" style={{ color: '#F46F29' }}>⊘</span>
+        </div>
+        <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>
+          Page not available
+        </h2>
+        <p className="mt-2 text-[14px] leading-[21px]" style={{ color: 'var(--c-muted)', maxWidth: 360 }}>
+          {unauthorized
+            ? 'This section of SENTINEL is not available for your current role.'
+            : 'The requested SENTINEL page does not exist.'}
+        </p>
+        <button onClick={onReturn} className="mt-4 text-[13px] font-medium hover:underline" style={{ color: '#F46F29' }}>
+          Return to Dashboard
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AppShell() {
-  const [loggedIn, setLoggedIn] = useState(false)
+  const auth = useAuth()
+  const { canSeeNav, membershipLoading } = useRole()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [dark, setDark] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [activeNav, setActiveNav] = useState('dashboard')
 
-  // Overlay states
   const [searchOpen, setSearchOpen] = useState(false)
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
   const [notifCount, setNotifCount] = useState(3)
 
-  // Capture drawers
   const [captureChooserOpen, setCaptureChooserOpen] = useState(false)
   const [logDrawerOpen, setLogDrawerOpen] = useState(false)
   const [uploadReportOpen, setUploadReportOpen] = useState(false)
 
-  // Detail states
-  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null)
-  const [activeReportId, setActiveReportId] = useState<string | null>(null)
-  const [activeActualId, setActiveActualId] = useState<string | null>(null)
-  const [activeExceptionId, setActiveExceptionId] = useState<string | null>(null)
+  const parsedRoute = parseRoute(location.pathname)
+  const activeNav = parsedRoute.nav === 'login' || parsedRoute.nav === '' ? 'dashboard' : parsedRoute.nav
+  const selectedActivityId = activeNav === 'schedule' ? parsedRoute.recordId : null
+  const activeReportId = activeNav === 'reports' ? parsedRoute.recordId : null
+  const activeActualId = activeNav === 'actuals' ? parsedRoute.recordId : null
+  const activeExceptionId = activeNav === 'exceptions' ? parsedRoute.recordId : null
+  const routeExists = knownRoutes.has(activeNav)
+  const routeAllowed = routeExists && canSeeNav(activeNav)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
   }, [dark])
 
-  // Global / keyboard shortcut
   useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === '/' && !['INPUT','TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        e.preventDefault()
+    function onKey(event: KeyboardEvent) {
+      if (event.key === '/' && !['INPUT', 'TEXTAREA'].includes((event.target as HTMLElement).tagName)) {
+        event.preventDefault()
         setSearchOpen(true)
       }
     }
@@ -70,22 +109,18 @@ function AppShell() {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
+  useEffect(() => {
+    if (auth.user && (location.pathname === '/' || location.pathname === '/login')) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [auth.user, location.pathname, navigate])
+
   function handleNavChange(nav: string) {
-    setActiveNav(nav)
-    if (nav !== 'schedule') setSelectedActivityId(null)
-    if (nav !== 'reports') setActiveReportId(null)
-    if (nav !== 'actuals') setActiveActualId(null)
-    if (nav !== 'exceptions') setActiveExceptionId(null)
+    navigate(routeFor(nav))
   }
 
   function handleNavigateToRecord(page: string, recordId?: string) {
-    handleNavChange(page)
-    if (recordId) {
-      if (page === 'schedule') setSelectedActivityId(recordId)
-      else if (page === 'actuals') setActiveActualId(recordId)
-      else if (page === 'exceptions') setActiveExceptionId(recordId)
-      else if (page === 'reports') setActiveReportId(recordId)
-    }
+    navigate(routeFor(page, recordId))
   }
 
   function handleSearchNavigate(nav: string, id?: string) {
@@ -93,37 +128,39 @@ function AppShell() {
     handleNavigateToRecord(nav, id)
   }
 
-  function handleProfileNavigate(nav: string) {
+  async function handleProfileNavigate(nav: string) {
     setProfileOpen(false)
     if (nav === '__logout') {
-      setLoggedIn(false)
+      await auth.signOut()
+      navigate('/login', { replace: true })
       return
     }
     handleNavChange(nav)
   }
 
-  function handleViewActualFromException(actualId: string) {
-    setActiveNav('actuals')
-    setActiveExceptionId(null)
-    setActiveActualId(actualId)
-  }
-
-  function handleViewExceptionFromActual(exceptionId: string) {
-    setActiveNav('exceptions')
-    setActiveActualId(null)
-    setActiveExceptionId(exceptionId)
-  }
-
   const handleReviewReport = useCallback((reportId: string) => {
-    setActiveNav('reports')
-    setActiveReportId(reportId)
-  }, [])
+    navigate(routeFor('reports', reportId))
+  }, [navigate])
+
+  if (auth.loading || membershipLoading) return <LoadingScreen />
+
+  if (!auth.user) {
+    return (
+      <LoginPage
+        isDemoMode={auth.isDemoMode}
+        onLogin={async (email, password) => {
+          await auth.signIn(email, password)
+          navigate('/dashboard', { replace: true })
+        }}
+        onForgotPassword={auth.requestPasswordReset}
+      />
+    )
+  }
 
   const isScheduleNoDetail = activeNav === 'schedule' && !selectedActivityId
   const isReportsListPage = activeNav === 'reports' && !activeReportId
   const isActualsList = activeNav === 'actuals' && !activeActualId
   const isExceptionsList = activeNav === 'exceptions' && !activeExceptionId
-
   const mainOverflow =
     OVERFLOW_HIDDEN_ROUTES.has(activeNav) &&
     (isScheduleNoDetail || isReportsListPage || isActualsList || isExceptionsList ||
@@ -131,27 +168,17 @@ function AppShell() {
       ? 'hidden'
       : 'auto'
 
-  // All known nav routes (for fallback detection)
-  const KNOWN_ROUTES = new Set([
-    'dashboard','review-queue','schedule','reports','actuals','exceptions',
-    'performance','data-quality','exec-knowledge','audit-log','admin','profile',
-  ])
-
-  if (!loggedIn) {
-    return <LoginPage onLogin={() => setLoggedIn(true)} />
-  }
-
   if (activeNav === 'profile') {
     return (
       <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-page)' }}>
-        <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((c) => !c)}
+        <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((current) => !current)}
           activeNav={activeNav} onNavChange={handleNavChange} onCaptureProgress={() => setCaptureChooserOpen(true)} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <Header dark={dark} onToggleDark={() => setDark((d) => !d)}
-            onOpenSearch={() => setSearchOpen(true)} onOpenNotifications={() => setNotificationsOpen((v) => !v)}
-            onOpenProfile={() => setProfileOpen((v) => !v)} onOpenGuide={() => setGuideOpen((v) => !v)}
+          <Header dark={dark} onToggleDark={() => setDark((current) => !current)}
+            onOpenSearch={() => setSearchOpen(true)} onOpenNotifications={() => setNotificationsOpen((value) => !value)}
+            onOpenProfile={() => setProfileOpen((value) => !value)} onOpenGuide={() => setGuideOpen((value) => !value)}
             notificationCount={notifCount} />
-          <ProfilePage onBack={() => handleNavChange('dashboard')} dark={dark} onToggleDark={() => setDark((d) => !d)} />
+          <ProfilePage onBack={() => handleNavChange('dashboard')} dark={dark} onToggleDark={() => setDark((current) => !current)} />
         </div>
       </div>
     )
@@ -161,7 +188,7 @@ function AppShell() {
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-page)' }}>
       <Sidebar
         collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((c) => !c)}
+        onToggle={() => setSidebarCollapsed((current) => !current)}
         activeNav={activeNav}
         onNavChange={handleNavChange}
         onCaptureProgress={() => setCaptureChooserOpen(true)}
@@ -170,11 +197,11 @@ function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Header
           dark={dark}
-          onToggleDark={() => setDark((d) => !d)}
+          onToggleDark={() => setDark((current) => !current)}
           onOpenSearch={() => setSearchOpen(true)}
-          onOpenNotifications={() => setNotificationsOpen((v) => !v)}
-          onOpenProfile={() => setProfileOpen((v) => !v)}
-          onOpenGuide={() => setGuideOpen((v) => !v)}
+          onOpenNotifications={() => setNotificationsOpen((value) => !value)}
+          onOpenProfile={() => setProfileOpen((value) => !value)}
+          onOpenGuide={() => setGuideOpen((value) => !value)}
           notificationCount={notifCount}
         />
 
@@ -185,84 +212,70 @@ function AppShell() {
           aria-label="Main content"
           style={{ overflow: mainOverflow, display: 'flex', flexDirection: 'column', minHeight: 0 }}
         >
-          {activeNav === 'dashboard' && <Dashboard onCaptureProgress={() => setCaptureChooserOpen(true)} onNavigate={handleNavigateToRecord} />}
-          {activeNav === 'review-queue' && <ReviewQueue />}
+          <Suspense fallback={<LoadingScreen />}>
+          {!routeAllowed && <UnavailablePage unauthorized={routeExists} onReturn={() => handleNavChange('dashboard')} />}
 
-          {activeNav === 'schedule' && !selectedActivityId && (
-            <SchedulePage onSelectActivity={(id) => setSelectedActivityId(id)} />
+          {routeAllowed && activeNav === 'dashboard' && <Dashboard onCaptureProgress={() => setCaptureChooserOpen(true)} onNavigate={handleNavigateToRecord} />}
+          {routeAllowed && activeNav === 'review-queue' && <ReviewQueue />}
+
+          {routeAllowed && activeNav === 'schedule' && !selectedActivityId && (
+            <SchedulePage onSelectActivity={(id) => handleNavigateToRecord('schedule', id)} />
           )}
-          {activeNav === 'schedule' && selectedActivityId && (
+          {routeAllowed && activeNav === 'schedule' && selectedActivityId && (
             <ScheduleActivityDetail
               activityId={selectedActivityId}
-              onBack={() => setSelectedActivityId(null)}
+              onBack={() => handleNavChange('schedule')}
               onViewActual={(id) => handleNavigateToRecord('actuals', id)}
               onViewAuditLog={() => handleNavigateToRecord('audit-log')}
               onViewSourceEvidence={() => handleNavigateToRecord('reports', 'RPT-2026-0001')}
             />
           )}
 
-          {activeNav === 'reports' && !activeReportId && (
-            <Reports onOpenReport={(id) => setActiveReportId(id)} onUploadReport={() => setUploadReportOpen(true)} />
+          {routeAllowed && activeNav === 'reports' && !activeReportId && (
+            <Reports onOpenReport={(id) => handleNavigateToRecord('reports', id)} onUploadReport={() => setUploadReportOpen(true)} />
           )}
-          {activeNav === 'reports' && activeReportId && (
-            <ReportAnalysis reportId={activeReportId} onBack={() => setActiveReportId(null)} onOpenReviewMatch={(_eventId) => {}} />
+          {routeAllowed && activeNav === 'reports' && activeReportId && (
+            <ReportAnalysis
+              reportId={activeReportId}
+              onBack={() => handleNavChange('reports')}
+              onOpenReviewMatch={(eventId) => navigate(`/review-queue?eventId=${encodeURIComponent(eventId)}`)}
+            />
           )}
 
-          {activeNav === 'actuals' && !activeActualId && (
-            <ActualsPage onSelectActual={(id) => setActiveActualId(id)} onCaptureProgress={() => setCaptureChooserOpen(true)} />
+          {routeAllowed && activeNav === 'actuals' && !activeActualId && (
+            <ActualsPage onSelectActual={(id) => handleNavigateToRecord('actuals', id)} onCaptureProgress={() => setCaptureChooserOpen(true)} />
           )}
-          {activeNav === 'actuals' && activeActualId && (
+          {routeAllowed && activeNav === 'actuals' && activeActualId && (
             <ActualDetail
               actualId={activeActualId}
-              onBack={() => setActiveActualId(null)}
-              onViewException={handleViewExceptionFromActual}
+              onBack={() => handleNavChange('actuals')}
+              onViewException={(id) => handleNavigateToRecord('exceptions', id)}
               onViewScheduleActivity={(id) => handleNavigateToRecord('schedule', id)}
               onViewSourceEvidence={() => handleNavigateToRecord('reports', 'RPT-2026-0001')}
             />
           )}
 
-          {activeNav === 'exceptions' && !activeExceptionId && (
-            <ExceptionsPage onSelectException={(id) => setActiveExceptionId(id)} />
+          {routeAllowed && activeNav === 'exceptions' && !activeExceptionId && (
+            <ExceptionsPage onSelectException={(id) => handleNavigateToRecord('exceptions', id)} />
           )}
-          {activeNav === 'exceptions' && activeExceptionId && (
+          {routeAllowed && activeNav === 'exceptions' && activeExceptionId && (
             <ExceptionDetail
               exceptionId={activeExceptionId}
-              onBack={() => setActiveExceptionId(null)}
-              onViewActual={handleViewActualFromException}
+              onBack={() => handleNavChange('exceptions')}
+              onViewActual={(id) => handleNavigateToRecord('actuals', id)}
               onViewScheduleActivity={(id) => handleNavigateToRecord('schedule', id)}
             />
           )}
 
-          {activeNav === 'performance'    && <PerformancePage />}
-          {activeNav === 'data-quality'   && <DataQualityPage />}
-          {activeNav === 'exec-knowledge' && <ExecutionKnowledgePage />}
-          {activeNav === 'audit-log'      && <AuditLogPage />}
-          {activeNav === 'admin'          && <AdminPage />}
-
-          {/* Fallback for unknown routes */}
-          {!KNOWN_ROUTES.has(activeNav) && (
-            <div className="flex h-full items-center justify-center" style={{ padding: 32 }}>
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-[14px]"
-                  style={{ background: 'var(--c-brand-tint)' }}>
-                  <span className="text-[20px]" style={{ color: '#F46F29' }}>⊘</span>
-                </div>
-                <h2 className="text-[20px] font-semibold leading-[26px] tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>
-                  Page not available
-                </h2>
-                <p className="mt-2 text-[14px] leading-[21px]" style={{ color: 'var(--c-muted)', maxWidth: 360 }}>
-                  This section of SENTINEL is not available for your current role.
-                </p>
-                <button onClick={() => handleNavChange('dashboard')} className="mt-4 text-[13px] font-medium hover:underline" style={{ color: '#F46F29' }}>
-                  Return to Dashboard
-                </button>
-              </div>
-            </div>
-          )}
+          {routeAllowed && activeNav === 'performance' && <PerformancePage />}
+          {routeAllowed && activeNav === 'data-quality' && <DataQualityPage />}
+          {routeAllowed && activeNav === 'exec-knowledge' && <ExecutionKnowledgePage />}
+          {routeAllowed && activeNav === 'audit-log' && <AuditLogPage />}
+          {routeAllowed && activeNav === 'admin' && <AdminPage />}
+          </Suspense>
         </main>
       </div>
 
-      {/* ── Global overlays ──────────────────────────────────────── */}
       <CaptureChooser
         open={captureChooserOpen}
         onClose={() => setCaptureChooserOpen(false)}
@@ -271,29 +284,22 @@ function AppShell() {
       />
       <LogWithSentinelDrawer open={logDrawerOpen} onClose={() => setLogDrawerOpen(false)} />
       <UploadReportDrawer open={uploadReportOpen} onClose={() => setUploadReportOpen(false)}
-        onReviewReport={() => handleReviewReport('RPT-2026-0001')} />
+        onReviewReport={(reportId) => handleReviewReport(reportId ?? 'RPT-2026-0001')} />
 
-      <GlobalSearch
-        open={searchOpen}
-        onClose={() => setSearchOpen(false)}
-        onNavigate={handleSearchNavigate}
-      />
-
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} onNavigate={handleSearchNavigate} />
       <NotificationsPopover
         open={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}
         onNavigate={(nav, id) => { setNotificationsOpen(false); handleNavigateToRecord(nav, id) }}
         onCountChange={setNotifCount}
       />
-
       <ProfileDropdown
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
-        onNavigate={handleProfileNavigate}
+        onNavigate={(nav) => { void handleProfileNavigate(nav) }}
         dark={dark}
-        onToggleDark={() => setDark((d) => !d)}
+        onToggleDark={() => setDark((current) => !current)}
       />
-
       <SentinelGuide
         open={guideOpen}
         onClose={() => setGuideOpen(false)}
@@ -306,8 +312,14 @@ function AppShell() {
 
 export default function App() {
   return (
-    <RoleProvider>
-      <AppShell />
-    </RoleProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <RoleProvider>
+          <ScheduleDataProvider>
+            <AppShell />
+          </ScheduleDataProvider>
+        </RoleProvider>
+      </AuthProvider>
+    </BrowserRouter>
   )
 }

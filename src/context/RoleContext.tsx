@@ -1,12 +1,16 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  hasPermission,
+  permissions,
+  userRoles,
+  type Permission,
+  type UserRole,
+} from '@sentinel/domain'
+import { environment } from '../lib/environment'
+import { supabase } from '../lib/supabase'
+import { useAuth } from './AuthContext'
 
-export type UserRole =
-  | 'site-supervisor'
-  | 'discipline-engineer'
-  | 'planner'
-  | 'project-controls'
-  | 'project-manager'
-  | 'administrator'
+export type { UserRole } from '@sentinel/domain'
 
 export interface UserProfile {
   name: string
@@ -14,32 +18,29 @@ export interface UserProfile {
   role: UserRole
   roleLabel: string
   project: string
+  projectId: string
   disciplines: string
   initials: string
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {
-  'site-supervisor':     'Site Supervisor',
+  'site-supervisor': 'Site Supervisor',
   'discipline-engineer': 'Discipline Engineer',
-  'planner':             'Planner',
-  'project-controls':    'Project Controls',
-  'project-manager':     'Project Manager',
-  'administrator':       'Administrator',
+  planner: 'Planner',
+  'project-controls': 'Project Controls',
+  'project-manager': 'Project Manager',
+  administrator: 'Administrator',
 }
 
-// The base identity never changes — only the simulated role changes
-const BASE_ROLE: UserRole = 'planner'
+const BASE_DEMO_ROLE: UserRole = 'planner'
 
-// Which nav ids are visible per role (null = all)
-export const ROLE_NAV: Record<UserRole, Set<string> | null> = {
-  'site-supervisor': new Set([
-    'dashboard', 'actuals', 'reports', 'schedule',
-  ]),
+export const ROLE_NAV: Record<UserRole, Set<string>> = {
+  'site-supervisor': new Set(['dashboard', 'actuals', 'reports', 'schedule']),
   'discipline-engineer': new Set([
     'dashboard', 'actuals', 'reports', 'schedule', 'exceptions',
     'performance', 'data-quality', 'exec-knowledge',
   ]),
-  'planner': new Set([
+  planner: new Set([
     'dashboard', 'actuals', 'reports', 'schedule', 'review-queue', 'exceptions',
     'performance', 'data-quality', 'exec-knowledge', 'audit-log',
   ]),
@@ -50,82 +51,133 @@ export const ROLE_NAV: Record<UserRole, Set<string> | null> = {
   'project-manager': new Set([
     'dashboard', 'actuals', 'reports', 'schedule', 'exceptions',
     'performance', 'data-quality', 'exec-knowledge',
-    // No review-queue, audit-log, admin
   ]),
-  // Administrator sees all system surfaces but NOT planner review workflow
-  'administrator': new Set([
+  administrator: new Set([
     'dashboard', 'actuals', 'reports', 'schedule', 'exceptions',
     'performance', 'data-quality', 'exec-knowledge', 'audit-log', 'admin',
   ]),
 }
 
-// Which actions are permitted per role
-export const ROLE_CAN: Record<UserRole, Set<string>> = {
-  'site-supervisor':     new Set(['capture', 'upload-report', 'clarification-response', 'view-actuals']),
-  'discipline-engineer': new Set(['capture', 'upload-report', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights']),
-  'planner':             new Set(['capture', 'upload-report', 'review-match', 'verify-actual', 'resolve-exception', 'view-audit', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights']),
-  'project-controls':    new Set(['capture', 'upload-report', 'review-match', 'verify-actual', 'resolve-exception', 'view-audit', 'schedule-integrity', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights']),
-  'project-manager':     new Set(['view-actuals', 'view-exceptions', 'view-performance', 'view-insights']),
-  // Administrator has configuration authority but NOT field-execution or planner-verification authority
-  'administrator':       new Set(['admin-config', 'view-actuals', 'view-exceptions', 'view-performance', 'view-insights', 'view-audit']),
-}
-
 interface RoleContextValue {
   user: UserProfile
+  membershipLoading: boolean
   isSimulatedRole: boolean
+  canSimulateRoles: boolean
   setRole: (role: UserRole) => void
   can: (action: string) => boolean
   canSeeNav: (navId: string) => boolean
 }
 
-const DEFAULT_USER: UserProfile = {
-  name: 'Arjun Mehta',
-  email: 'arjun.mehta@sentinel.demo',
-  role: BASE_ROLE,
-  roleLabel: ROLE_LABELS[BASE_ROLE],
-  project: 'Infrastructure Expansion',
-  disciplines: 'All',
-  initials: 'AM',
+function initialsFor(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('') || 'SE'
 }
 
-const RoleContext = createContext<RoleContextValue>({
-  user: DEFAULT_USER,
-  isSimulatedRole: false,
-  setRole: () => {},
-  can: () => false,
-  canSeeNav: () => true,
-})
+function defaultProfile(name = 'Arjun Mehta', email = 'arjun.mehta@sentinel.demo'): UserProfile {
+  return {
+    name,
+    email,
+    role: BASE_DEMO_ROLE,
+    roleLabel: ROLE_LABELS[BASE_DEMO_ROLE],
+    project: 'Infrastructure Expansion',
+    projectId: '20000000-0000-4000-8000-000000000001',
+    disciplines: 'All',
+    initials: initialsFor(name),
+  }
+}
+
+const RoleContext = createContext<RoleContextValue | null>(null)
 
 export function RoleProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<UserProfile>(DEFAULT_USER)
+  const auth = useAuth()
+  const canSimulateRoles = auth.isDemoMode && environment.roleSimulationEnabled
+  const [user, setUser] = useState<UserProfile>(() => defaultProfile())
+  const [membershipLoading, setMembershipLoading] = useState(false)
   const [isSimulatedRole, setIsSimulatedRole] = useState(false)
 
+  useEffect(() => {
+    if (!auth.user) return
+
+    const baseRole: UserRole = auth.isDemoMode ? BASE_DEMO_ROLE : 'site-supervisor'
+    setUser({
+      ...defaultProfile(auth.user.name, auth.user.email),
+      role: baseRole,
+      roleLabel: ROLE_LABELS[baseRole],
+    })
+    setIsSimulatedRole(false)
+
+    if (!supabase) return
+    let active = true
+    setMembershipLoading(true)
+
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('project_memberships')
+          .select('project_id, role, disciplines, projects(name)')
+          .eq('user_id', auth.user!.id)
+          .eq('status', 'active')
+          .limit(1)
+          .maybeSingle()
+        if (!active || !data) return
+        const role = userRoles.includes(data.role as UserRole) ? data.role as UserRole : 'site-supervisor'
+        const relatedProject = data.projects as unknown as { name?: string } | { name?: string }[] | null
+        const projectName = Array.isArray(relatedProject) ? relatedProject[0]?.name : relatedProject?.name
+        setUser((current) => ({
+          ...current,
+          role,
+          roleLabel: ROLE_LABELS[role],
+          project: projectName ?? 'SENTINEL Project',
+          projectId: data.project_id,
+          disciplines: Array.isArray(data.disciplines) && data.disciplines.length
+            ? data.disciplines.join(', ')
+            : 'All',
+        }))
+      } finally {
+        if (active) setMembershipLoading(false)
+      }
+    })()
+
+    return () => {
+      active = false
+    }
+  }, [auth.user, auth.isDemoMode])
+
   function setRole(role: UserRole) {
-    setUser((u) => ({
-      ...u,
-      role,
-      roleLabel: ROLE_LABELS[role],
-    }))
-    setIsSimulatedRole(role !== BASE_ROLE)
+    if (!canSimulateRoles) return
+    setUser((current) => ({ ...current, role, roleLabel: ROLE_LABELS[role] }))
+    setIsSimulatedRole(role !== BASE_DEMO_ROLE)
   }
 
   function can(action: string) {
-    return ROLE_CAN[user.role]?.has(action) ?? false
+    if (!(permissions as readonly string[]).includes(action)) return false
+    return hasPermission(user.role, action as Permission)
   }
 
   function canSeeNav(navId: string) {
-    const allowed = ROLE_NAV[user.role]
-    if (allowed === null) return true
-    return allowed.has(navId)
+    if (navId === 'profile') return true
+    return ROLE_NAV[user.role].has(navId)
   }
 
-  return (
-    <RoleContext.Provider value={{ user, isSimulatedRole, setRole, can, canSeeNav }}>
-      {children}
-    </RoleContext.Provider>
-  )
+  const value = useMemo<RoleContextValue>(() => ({
+    user,
+    membershipLoading,
+    isSimulatedRole,
+    canSimulateRoles,
+    setRole,
+    can,
+    canSeeNav,
+  }), [user, membershipLoading, isSimulatedRole, canSimulateRoles])
+
+  return <RoleContext.Provider value={value}>{children}</RoleContext.Provider>
 }
 
 export function useRole() {
-  return useContext(RoleContext)
+  const context = useContext(RoleContext)
+  if (!context) throw new Error('useRole must be used within RoleProvider')
+  return context
 }

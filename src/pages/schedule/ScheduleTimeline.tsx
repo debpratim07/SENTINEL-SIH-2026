@@ -1,35 +1,60 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { scheduleTree, ScheduleActivity, flattenTree, defaultExpandedIds, fmtDateLong, TRUST_CONFIG } from '../../data/scheduleData'
+import { ScheduleActivity, flattenAll, flattenTree, getAllGroupIds, fmtDate, fmtDateLong, TRUST_CONFIG } from '../../data/scheduleData'
+import { useScheduleData } from '../../context/ScheduleDataContext'
 
-const RANGE_START = new Date('2026-08-15')
-const RANGE_END = new Date('2026-09-10')
 const DAY_PX = 30
-const TODAY = new Date('2026-08-28')
 const ROW_H = 44
 const HEADER_H = 36
 const COL_W = 280
 
-function dayToX(iso: string | null | undefined): number | null {
+interface TimelineRange {
+  start: Date
+  end: Date
+  today: Date
+}
+
+function dateFromIso(iso: string): Date {
+  const [year, month, day] = iso.split('-').map(Number)
+  return new Date(Date.UTC(year!, month! - 1, day!))
+}
+
+function addDays(date: Date, days: number): Date {
+  return new Date(date.getTime() + days * 86_400_000)
+}
+
+function buildTimelineRange(tree: ScheduleActivity[], todayIso: string): TimelineRange {
+  const dates = flattenAll(tree)
+    .flatMap((activity) => [activity.plannedStart, activity.plannedFinish, activity.actualStart, activity.actualFinish])
+    .filter((value): value is string => Boolean(value))
+    .map(dateFromIso)
+    .sort((left, right) => left.getTime() - right.getTime())
+  const today = dateFromIso(todayIso)
+  if (dates.length === 0) return { start: addDays(today, -14), end: addDays(today, 14), today }
+  return { start: addDays(dates[0]!, -3), end: addDays(dates.at(-1)!, 5), today }
+}
+
+function dayToX(iso: string | null | undefined, range: TimelineRange): number | null {
   if (!iso) return null
-  const off = Math.round((new Date(iso).getTime() - RANGE_START.getTime()) / 86400000)
+  const off = Math.round((dateFromIso(iso).getTime() - range.start.getTime()) / 86_400_000)
   return off * DAY_PX
 }
 
-function todayX(): number {
-  return Math.round((TODAY.getTime() - RANGE_START.getTime()) / 86400000) * DAY_PX
+function todayX(range: TimelineRange): number | null {
+  if (range.today < range.start || range.today > range.end) return null
+  return Math.round((range.today.getTime() - range.start.getTime()) / 86_400_000) * DAY_PX
 }
 
-function totalWidth(): number {
-  return Math.round((RANGE_END.getTime() - RANGE_START.getTime()) / 86400000) * DAY_PX
+function totalWidth(range: TimelineRange): number {
+  return Math.max(1, Math.round((range.end.getTime() - range.start.getTime()) / 86_400_000)) * DAY_PX
 }
 
-function headerDates(): { label: string; x: number }[] {
+function headerDates(range: TimelineRange): { label: string; x: number }[] {
   const dates: { label: string; x: number }[] = []
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const cur = new Date(RANGE_START)
-  while (cur <= RANGE_END) {
-    const off = Math.round((cur.getTime() - RANGE_START.getTime()) / 86400000)
+  const cur = new Date(range.start)
+  while (cur <= range.end) {
+    const off = Math.round((cur.getTime() - range.start.getTime()) / 86_400_000)
     dates.push({ label: `${cur.getDate()} ${months[cur.getMonth()]}`, x: off * DAY_PX })
     cur.setDate(cur.getDate() + 7)
   }
@@ -40,6 +65,7 @@ interface Props {
   onSelectActivity: (id: string) => void
   discipline: string
   area: string
+  search: string
 }
 
 interface TooltipData {
@@ -51,19 +77,21 @@ interface TooltipData {
 function ActivityBars({
   activity,
   onSelect,
+  range,
 }: {
   activity: ScheduleActivity
   onSelect: (id: string) => void
+  range: TimelineRange
 }) {
   if (activity.isGroup) return null
 
   const BAR_H = 13
   const PLAN_Y = (ROW_H - BAR_H * 2 - 5) / 2
   const ACT_Y = PLAN_Y + BAR_H + 5
-  const TW = totalWidth()
-  const tX = todayX()
-  const planX1 = dayToX(activity.plannedStart)
-  const planX2 = dayToX(activity.plannedFinish)
+  const TW = totalWidth(range)
+  const tX = todayX(range)
+  const planX1 = dayToX(activity.plannedStart, range)
+  const planX2 = dayToX(activity.plannedFinish, range)
 
   return (
     <svg
@@ -88,11 +116,11 @@ function ActivityBars({
       {/* Conflict markers — small pins only, no date labels (dates shown in tooltip) */}
       {activity.actualStartConflict && activity.actualStartConflict.length > 0 && (() => {
         const conflicts = activity.actualStartConflict!
-        const lastCx = dayToX(conflicts[conflicts.length - 1])
+        const lastCx = dayToX(conflicts[conflicts.length - 1], range)
         return (
           <>
             {conflicts.map((iso, i) => {
-              const cx = dayToX(iso)
+              const cx = dayToX(iso, range)
               if (cx === null) return null
               return (
                 <g key={i}>
@@ -121,12 +149,12 @@ function ActivityBars({
 
       {/* Actual bars — non-conflict */}
       {!activity.actualStartConflict && activity.actualStart && (() => {
-        const ax1 = dayToX(activity.actualStart)
+        const ax1 = dayToX(activity.actualStart, range)
         if (ax1 === null) return null
 
         if (activity.actualFinish) {
           /* Verified complete with known finish — solid bar */
-          const ax2 = dayToX(activity.actualFinish)
+          const ax2 = dayToX(activity.actualFinish, range)
           if (ax2 === null) return null
           return (
             <rect
@@ -144,7 +172,7 @@ function ActivityBars({
           <>
             <circle cx={ax1 + 2} cy={ACT_Y + BAR_H / 2} r={7} fill="rgba(244,111,41,0.18)" />
             <circle cx={ax1 + 2} cy={ACT_Y + BAR_H / 2} r={3.5} fill="#F46F29" />
-            {tX > ax1 + 8 && (
+            {tX !== null && tX > ax1 + 8 && (
               <line
                 x1={ax1 + 8} y1={ACT_Y + BAR_H / 2}
                 x2={tX} y2={ACT_Y + BAR_H / 2}
@@ -152,13 +180,15 @@ function ActivityBars({
                 strokeDasharray="4,3" opacity={0.35}
               />
             )}
-            <text
-              x={tX + 6} y={ACT_Y + BAR_H / 2 + 4}
-              fontSize={9} fill="var(--c-subtle)" fontStyle="italic"
-              fontFamily="-apple-system, BlinkMacSystemFont, Inter, sans-serif"
-            >
-              In Progress
-            </text>
+            {tX !== null && (
+              <text
+                x={tX + 6} y={ACT_Y + BAR_H / 2 + 4}
+                fontSize={9} fill="var(--c-subtle)" fontStyle="italic"
+                fontFamily="-apple-system, BlinkMacSystemFont, Inter, sans-serif"
+              >
+                In Progress
+              </text>
+            )}
           </>
         )
       })()}
@@ -278,8 +308,10 @@ function TooltipContent({ activity }: { activity: ScheduleActivity }) {
   )
 }
 
-export default function ScheduleTimeline({ onSelectActivity, discipline, area }: Props) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(defaultExpandedIds)
+export default function ScheduleTimeline({ onSelectActivity, discipline, area, search }: Props) {
+  const { tree, today } = useScheduleData()
+  const range = useMemo(() => buildTimelineRange(tree, today), [tree, today])
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => getAllGroupIds(tree))
   const [tooltip, setTooltip] = useState<TooltipData | null>(null)
 
   function toggle(id: string) {
@@ -299,6 +331,7 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
         if (!item.isGroup) {
           if (discipline && item.discipline !== discipline) return null
           if (area && item.area !== area) return null
+          if (search && !item.label.toLowerCase().includes(search.toLowerCase())) return null
           return item
         }
         return null
@@ -306,9 +339,10 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
       .filter(Boolean) as ScheduleActivity[]
   }
 
-  const filtered = discipline || area ? filterTree(scheduleTree) : scheduleTree
+  const filtered = discipline || area || search ? filterTree(tree) : tree
   const rows = flattenTree(filtered, expandedIds, 0)
-  const TW = totalWidth()
+  const TW = totalWidth(range)
+  const currentDayX = todayX(range)
 
   return (
     /* B5: outer container clips; inner single scroll container handles all overflow */
@@ -424,8 +458,8 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
                 borderBottom: '1px solid var(--c-border)',
               }}
             >
-              {headerDates()
-                .filter((d) => Math.abs(d.x - todayX()) > 56)
+              {headerDates(range)
+                .filter((d) => currentDayX === null || Math.abs(d.x - currentDayX) > 56)
                 .map((d) => (
                   <div
                     key={d.x}
@@ -444,22 +478,22 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
                 ))}
 
               {/* Today rule in header */}
-              <div
+              {currentDayX !== null && <div
                 style={{
                   position: 'absolute',
-                  left: todayX(),
+                  left: currentDayX,
                   top: 0,
                   bottom: 0,
                   width: 1,
                   background: 'rgba(244,111,41,0.50)',
                   pointerEvents: 'none',
                 }}
-              />
+              />}
               {/* B2: "Today · 28 Aug" label */}
-              <div
+              {currentDayX !== null && <div
                 style={{
                   position: 'absolute',
-                  left: todayX() + 5,
+                  left: currentDayX + 5,
                   top: '50%',
                   transform: 'translateY(-50%)',
                   fontSize: 9,
@@ -470,15 +504,15 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
                   letterSpacing: '0.02em',
                 }}
               >
-                Today · 28 Aug
-              </div>
+                Today · {fmtDate(today)}
+              </div>}
             </div>
 
             {/* Today rule through rows */}
-            <div
+            {currentDayX !== null && <div
               style={{
                 position: 'absolute',
-                left: todayX(),
+                left: currentDayX,
                 top: HEADER_H,
                 bottom: 0,
                 width: 1,
@@ -486,7 +520,7 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
                 zIndex: 4,
                 pointerEvents: 'none',
               }}
-            />
+            />}
 
             {/* Bar rows */}
             {rows.map(({ activity }) => (
@@ -504,7 +538,7 @@ export default function ScheduleTimeline({ onSelectActivity, discipline, area }:
                 }}
                 onMouseLeave={activity.isGroup ? undefined : () => setTooltip(null)}
               >
-                <ActivityBars activity={activity} onSelect={onSelectActivity} />
+                <ActivityBars activity={activity} onSelect={onSelectActivity} range={range} />
               </div>
             ))}
           </div>

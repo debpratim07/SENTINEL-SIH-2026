@@ -1,5 +1,6 @@
 import { ChevronRight, CheckCircle2, FileText } from 'lucide-react'
-import { findActivity, STATUS_CONFIG, TRUST_CONFIG, fmtDateLong } from '../../data/scheduleData'
+import { STATUS_CONFIG, TRUST_CONFIG, fmtDate, fmtDateLong, type ScheduleActivity } from '../../data/scheduleData'
+import { useScheduleData } from '../../context/ScheduleDataContext'
 
 interface Props {
   activityId: string
@@ -55,12 +56,13 @@ function FieldRow({ label, children }: { label: string; children: React.ReactNod
 }
 
 export default function ScheduleActivityDetail({ activityId, onBack, onViewActual, onViewAuditLog, onViewSourceEvidence }: Props) {
-  const activity = findActivity(activityId)
+  const { getActivity, loading } = useScheduleData()
+  const activity = getActivity(activityId)
 
   if (!activity) {
     return (
       <div className="flex h-full items-center justify-center" style={{ padding: 32 }}>
-        <p style={{ color: 'var(--c-muted)' }}>Activity not found.</p>
+        <p style={{ color: 'var(--c-muted)' }}>{loading ? 'Loading activity…' : 'Activity not found.'}</p>
       </div>
     )
   }
@@ -581,35 +583,27 @@ export default function ScheduleActivityDetail({ activityId, onBack, onViewActua
   )
 }
 
-function ExecutionTimeline({ activity }: { activity: ReturnType<typeof findActivity> & {} }) {
+function ExecutionTimeline({ activity }: { activity: ScheduleActivity }) {
   const events = [
-    {
-      date: '24 Aug',
-      label: 'Planned Start',
-      type: 'planned' as const,
-      position: 'top' as const,
-    },
-    {
-      date: '26 Aug',
+    activity.plannedStart ? { sortDate: activity.plannedStart, date: fmtDate(activity.plannedStart), label: 'Planned Start', type: 'planned' as const } : null,
+    activity.actualStart ? {
+      sortDate: activity.actualStart,
+      date: fmtDate(activity.actualStart),
       label: 'Actual Start',
-      sublabel: 'Verified',
+      sublabel: activity.trust === 'verified' ? 'Verified' : undefined,
       type: 'verified' as const,
-      position: 'bottom' as const,
-    },
-    {
-      date: '28 Aug',
-      label: 'Latest Field Update',
-      sublabel: 'Final bolt tightening pending',
-      type: 'field' as const,
-      position: 'top' as const,
-    },
-    {
-      date: '30 Aug',
-      label: 'Planned Finish',
-      type: 'planned' as const,
-      position: 'bottom' as const,
-    },
-  ]
+    } : null,
+    activity.actualFinish ? {
+      sortDate: activity.actualFinish,
+      date: fmtDate(activity.actualFinish),
+      label: 'Actual Finish',
+      sublabel: activity.trust === 'verified' ? 'Verified' : undefined,
+      type: 'verified' as const,
+    } : null,
+    activity.plannedFinish ? { sortDate: activity.plannedFinish, date: fmtDate(activity.plannedFinish), label: 'Planned Finish', type: 'planned' as const } : null,
+  ].filter((event): event is NonNullable<typeof event> => event !== null)
+    .sort((left, right) => left.sortDate.localeCompare(right.sortDate))
+    .map((event, index) => ({ ...event, position: index % 2 === 0 ? 'top' as const : 'bottom' as const }))
 
   const dotColors = {
     planned: 'var(--c-border-strong)',
@@ -650,34 +644,10 @@ function ExecutionTimeline({ activity }: { activity: ReturnType<typeof findActiv
             className="absolute"
             style={{
               top: '50%',
-              left: '12.5%',
-              right: '12.5%',
+              left: '8%',
+              right: '8%',
               height: 2,
               background: 'var(--c-border)',
-              transform: 'translateY(-50%)',
-            }}
-          />
-          {/* Orange segment: Planned Start to Actual Start */}
-          <div
-            className="absolute"
-            style={{
-              top: '50%',
-              left: '12.5%',
-              width: '25%',
-              height: 2,
-              background: 'var(--c-border-strong)',
-              transform: 'translateY(-50%)',
-            }}
-          />
-          {/* Verified orange segment: Actual Start to Latest Update */}
-          <div
-            className="absolute"
-            style={{
-              top: '50%',
-              left: '37.5%',
-              width: '25%',
-              height: 2,
-              background: '#F46F29',
               transform: 'translateY(-50%)',
             }}
           />
@@ -686,7 +656,7 @@ function ExecutionTimeline({ activity }: { activity: ReturnType<typeof findActiv
             <div
               key={i}
               className="absolute flex items-center justify-center"
-              style={{ left: `${12.5 + i * 25}%`, transform: 'translateX(-50%)' }}
+              style={{ left: `${events.length === 1 ? 50 : 8 + (i / (events.length - 1)) * 84}%`, transform: 'translateX(-50%)' }}
             >
               <div
                 className="rounded-full"

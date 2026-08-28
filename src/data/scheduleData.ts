@@ -411,7 +411,7 @@ export function findActivity(id: string): ScheduleActivity | undefined {
   return flattenAll(scheduleTree).find((a) => a.id === id)
 }
 
-function getAllGroupIds(tree: ScheduleActivity[]): Set<string> {
+export function getAllGroupIds(tree: ScheduleActivity[]): Set<string> {
   const ids = new Set<string>()
   function traverse(items: ScheduleActivity[]) {
     for (const item of items) {

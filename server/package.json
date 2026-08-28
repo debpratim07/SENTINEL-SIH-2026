@@ -1,0 +1,31 @@
+{
+  "name": "@sentinel/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "dev:worker": "tsx watch src/worker.ts",
+    "build": "tsup src/main.ts src/worker.ts --format esm --clean",
+    "start": "node dist/main.js",
+    "start:worker": "node dist/worker.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@sentinel/domain": "workspace:*",
+    "@supabase/supabase-js": "^2.112.4",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "postgres": "^3.4.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.11"
+  }
+}

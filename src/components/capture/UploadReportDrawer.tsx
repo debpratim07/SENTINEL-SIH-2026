@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { X, Upload, FileText, CheckCircle2, Loader2, AlertTriangle, ChevronRight } from 'lucide-react'
 import Drawer from '../ui/Drawer'
+import { completeReportUpload, initiateReportUpload } from '../../lib/api'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import { useRole } from '../../context/RoleContext'
 
 type Step = 'upload' | 'validating' | 'validation-error' | 'processing' | 'result'
 
 interface Props {
   open: boolean
   onClose: () => void
-  onReviewReport: () => void
+  onReviewReport: (reportId?: string) => void
 }
 
 const PROCESSING_STEPS = [
@@ -19,11 +23,17 @@ const PROCESSING_STEPS = [
 ]
 
 export default function UploadReportDrawer({ open, onClose, onReviewReport }: Props) {
+  const auth = useAuth()
+  const { user } = useRole()
   const [step, setStep] = useState<Step>('upload')
   const [processingStep, setProcessingStep] = useState(0)
   const [discipline, setDiscipline] = useState('Piping')
   const [reportDate, setReportDate] = useState('28 Aug 2026')
   const [area, setArea] = useState('Area B')
+  const [file, setFile] = useState<File | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [queuedReportId, setQueuedReportId] = useState<string | null>(null)
+  const [liveUploadQueued, setLiveUploadQueued] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   function reset() {
@@ -32,6 +42,10 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
     setDiscipline('Piping')
     setReportDate('28 Aug 2026')
     setArea('Area B')
+    setFile(null)
+    setErrorMessage('')
+    setQueuedReportId(null)
+    setLiveUploadQueued(false)
   }
 
   function handleClose() {
@@ -39,12 +53,57 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
     setTimeout(reset, 340)
   }
 
-  function handleAnalyze() {
+  async function handleAnalyze() {
+    if (!file) {
+      setErrorMessage('Choose a report before starting analysis.')
+      setStep('validation-error')
+      return
+    }
+
+    setErrorMessage('')
     setStep('validating')
-    setTimeout(() => {
-      setStep('processing')
-      setProcessingStep(0)
-    }, 900)
+
+    if (auth.isDemoMode) {
+      setTimeout(() => {
+        setStep('processing')
+        setProcessingStep(0)
+      }, 500)
+      return
+    }
+
+    try {
+      const token = await auth.getAccessToken()
+      if (!token || !supabase) throw new Error('Your secure session is unavailable. Please sign in again.')
+      const parsedDate = new Date(reportDate)
+      if (Number.isNaN(parsedDate.getTime())) throw new Error('Enter a valid report date.')
+
+      const initiated = await initiateReportUpload({
+        projectId: user.projectId,
+        fileName: file.name,
+        contentType: file.type || 'application/octet-stream',
+        sizeBytes: file.size,
+        reportDate: parsedDate.toISOString().slice(0, 10),
+        title: file.name,
+      }, token)
+
+      const { error: uploadError } = await supabase.storage
+        .from('project-documents')
+        .uploadToSignedUrl(initiated.storagePath, initiated.uploadToken, file, {
+          contentType: file.type || 'application/octet-stream',
+        })
+      if (uploadError) throw uploadError
+
+      const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+      const checksumSha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+      await completeReportUpload(initiated.fileId, { checksumSha256 }, token)
+
+      setQueuedReportId(initiated.reportId)
+      setLiveUploadQueued(true)
+      setStep('result')
+    } catch (uploadError) {
+      setErrorMessage(uploadError instanceof Error ? uploadError.message : 'Unable to upload this report.')
+      setStep('validation-error')
+    }
   }
 
   useEffect(() => {
@@ -59,7 +118,7 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
 
   function handleReviewReport() {
     handleClose()
-    setTimeout(onReviewReport, 350)
+    setTimeout(() => onReviewReport(queuedReportId ?? undefined), 350)
   }
 
   return (
@@ -112,11 +171,11 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px 28px' }}>
-          {step === 'upload' && <UploadStep discipline={discipline} setDiscipline={setDiscipline} reportDate={reportDate} setReportDate={setReportDate} area={area} setArea={setArea} fileInputRef={fileInputRef} />}
-          {step === 'validating' && <ValidatingStep />}
-          {step === 'validation-error' && <ValidationErrorStep onRetry={() => setStep('upload')} />}
-          {step === 'processing' && <ProcessingStep currentStep={processingStep} />}
-          {step === 'result' && <ResultStep />}
+          {step === 'upload' && <UploadStep discipline={discipline} setDiscipline={setDiscipline} reportDate={reportDate} setReportDate={setReportDate} area={area} setArea={setArea} fileInputRef={fileInputRef} file={file} onFileChange={setFile} />}
+          {step === 'validating' && <ValidatingStep fileName={file?.name ?? 'Report'} />}
+          {step === 'validation-error' && <ValidationErrorStep message={errorMessage} onRetry={() => setStep('upload')} />}
+          {step === 'processing' && <ProcessingStep currentStep={processingStep} fileName={file?.name ?? 'Report'} />}
+          {step === 'result' && <ResultStep queued={liveUploadQueued} />}
         </div>
 
         {/* Footer */}
@@ -150,6 +209,7 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
               </button>
               <button
                 onClick={handleAnalyze}
+                disabled={!file}
                 style={{
                   padding: '9px 20px',
                   borderRadius: 9,
@@ -159,7 +219,8 @@ export default function UploadReportDrawer({ open, onClose, onReviewReport }: Pr
                   boxShadow: '0 2px 8px rgba(244,111,41,0.28)',
                   color: '#fff',
                   border: 'none',
-                  cursor: 'pointer',
+                  cursor: file ? 'pointer' : 'not-allowed',
+                  opacity: file ? 1 : 0.55,
                   letterSpacing: '-0.01em',
                 }}
               >
@@ -235,14 +296,16 @@ function UploadStep({
   reportDate, setReportDate,
   area, setArea,
   fileInputRef,
+  file, onFileChange,
 }: {
   discipline: string; setDiscipline: (v: string) => void
   reportDate: string; setReportDate: (v: string) => void
   area: string; setArea: (v: string) => void
   fileInputRef: React.RefObject<HTMLInputElement | null>
+  file: File | null
+  onFileChange: (file: File | null) => void
 }) {
   const [isDragging, setIsDragging] = useState(false)
-  const [fileLoaded] = useState(true)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -250,7 +313,11 @@ function UploadStep({
       <div
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
         onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setIsDragging(false) }}
+        onDrop={(e) => {
+          e.preventDefault()
+          setIsDragging(false)
+          onFileChange(e.dataTransfer.files[0] ?? null)
+        }}
         style={{
           border: `2px dashed ${isDragging ? '#F46F29' : 'var(--c-border-strong)'}`,
           borderRadius: 14,
@@ -260,7 +327,7 @@ function UploadStep({
           transition: 'all 150ms',
         }}
       >
-        {fileLoaded ? (
+        {file ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, justifyContent: 'center' }}>
             <div
               style={{
@@ -278,11 +345,15 @@ function UploadStep({
             </div>
             <div style={{ textAlign: 'left' }}>
               <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>
-                Piping_DPR_28Aug.pdf
+                {file.name}
               </p>
-              <p style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>PDF · 2.4 MB</p>
+              <p style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>
+                {(file.type.split('/').pop() || 'file').toUpperCase()} · {(file.size / 1024 / 1024).toFixed(1)} MB
+              </p>
             </div>
             <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
               style={{
                 marginLeft: 8,
                 fontSize: 12,
@@ -325,13 +396,20 @@ function UploadStep({
               </button>
             </p>
             <p style={{ fontSize: 11, color: 'var(--c-subtle)' }}>PDF · DOCX · XLSX · CSV · TXT</p>
-            <input ref={fileInputRef} type="file" accept=".pdf,.docx,.xlsx,.csv,.txt" style={{ display: 'none' }} aria-label="Upload file" />
           </>
         )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx,.xlsx,.csv,.txt"
+          style={{ display: 'none' }}
+          aria-label="Upload file"
+          onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
+        />
       </div>
 
       {/* Validation pre-check */}
-      {fileLoaded && (
+      {file && (
         <div
           style={{
             background: 'var(--c-page)',
@@ -407,7 +485,7 @@ function UploadStep({
   )
 }
 
-function ValidatingStep() {
+function ValidatingStep({ fileName }: { fileName: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div
@@ -423,7 +501,7 @@ function ValidatingStep() {
       >
         <FileText size={18} strokeWidth={1.8} style={{ color: '#F46F29', flexShrink: 0 }} />
         <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--c-text)' }}>
-          Piping_DPR_28Aug.pdf
+          {fileName}
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -438,7 +516,7 @@ function ValidatingStep() {
   )
 }
 
-function ValidationErrorStep({ onRetry }: { onRetry: () => void }) {
+function ValidationErrorStep({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       <div
@@ -456,7 +534,7 @@ function ValidationErrorStep({ onRetry }: { onRetry: () => void }) {
         <div>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#DC2626' }}>Unable to process this file</p>
           <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>
-            The uploaded file is corrupted or unsupported.
+            {message || 'The uploaded file is corrupted or unsupported.'}
           </p>
         </div>
       </div>
@@ -480,14 +558,14 @@ function ValidationErrorStep({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-function ProcessingStep({ currentStep }: { currentStep: number }) {
+function ProcessingStep({ currentStep, fileName }: { currentStep: number; fileName: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
         <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-text)', marginBottom: 4 }}>
           Analyzing Report
         </p>
-        <p style={{ fontSize: 13, color: 'var(--c-muted)' }}>Piping_DPR_28Aug.pdf</p>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)' }}>{fileName}</p>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {PROCESSING_STEPS.map((s, i) => {
@@ -532,7 +610,7 @@ function ProcessingStep({ currentStep }: { currentStep: number }) {
   )
 }
 
-function ResultStep() {
+function ResultStep({ queued }: { queued: boolean }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -552,16 +630,15 @@ function ResultStep() {
         </div>
         <div>
           <p style={{ fontSize: 17, fontWeight: 700, color: 'var(--c-text)', letterSpacing: '-0.01em' }}>
-            Report processed
+            {queued ? 'Report queued securely' : 'Report processed'}
           </p>
           <p style={{ fontSize: 14, color: 'var(--c-muted)', marginTop: 2 }}>
-            6 Actual Events identified
+            {queued ? 'Processing will continue in the background' : '6 Actual Events identified'}
           </p>
         </div>
       </div>
 
-      {/* Summary stats */}
-      <div
+      {!queued && <div
         style={{
           display: 'grid',
           gridTemplateColumns: '1fr 1fr 1fr',
@@ -587,10 +664,12 @@ function ResultStep() {
             <p style={{ fontSize: 11, color: 'var(--c-muted)', marginTop: 3 }}>{label}</p>
           </div>
         ))}
-      </div>
+      </div>}
 
       <p style={{ fontSize: 13, color: 'var(--c-muted)', lineHeight: 1.5 }}>
-        Each execution event is evaluated independently before it can affect schedule truth.
+        {queued
+          ? 'You can leave this screen. SENTINEL will create review items only after evidence extraction and matching finish.'
+          : 'Each execution event is evaluated independently before it can affect schedule truth.'}
       </p>
     </div>
   )
