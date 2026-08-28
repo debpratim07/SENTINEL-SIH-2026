@@ -1,0 +1,10 @@
+{
+  "description": "Capture actual progress and reconcile schedules for infrastructure projects with a premium, user-friendly dashboard designed for project managers.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

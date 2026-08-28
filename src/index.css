@@ -1,0 +1,96 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..700;1,14..32,300..700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand: #F46F29;
+  --color-brand-light: #F59B4C;
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, sans-serif;
+  --font-data: "JetBrains Mono", "Menlo", "Monaco", monospace;
+}
+
+/* ── Light-mode design tokens ───────────────────────────────── */
+:root {
+  --c-page: #FAFAFC;
+  --c-card: #FFFFFF;
+  --c-glass: rgba(255, 255, 255, 0.78);
+  --c-border: rgba(63, 63, 63, 0.12);
+  --c-border-strong: rgba(63, 63, 63, 0.22);
+  --c-text: #3F3F3F;
+  --c-muted: #6E6E73;
+  --c-subtle: #9E9EA6;
+  --c-brand-tint: rgba(244, 111, 41, 0.10);
+  --c-brand-focus: rgba(244, 111, 41, 0.35);
+  --c-shadow-card: 0 1px 2px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.05);
+  --c-shadow-glass: 0 0 0 1px rgba(255,255,255,0.85) inset, 0 4px 32px rgba(0,0,0,0.07);
+  --c-shadow-elevated: 0 2px 4px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.08);
+  --backdrop: blur(20px) saturate(180%);
+}
+
+/* ── Dark-mode design tokens ────────────────────────────────── */
+.dark {
+  --c-page: #141417;
+  --c-card: #1E1E25;
+  --c-glass: rgba(20, 20, 28, 0.85);
+  --c-border: rgba(255, 255, 255, 0.09);
+  --c-border-strong: rgba(255, 255, 255, 0.16);
+  --c-text: #EFEFF2;
+  --c-muted: #8E8E96;
+  --c-subtle: #5E5E68;
+  --c-brand-tint: rgba(244, 111, 41, 0.15);
+  --c-brand-focus: rgba(244, 111, 41, 0.42);
+  --c-shadow-card: 0 1px 2px rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.30);
+  --c-shadow-glass: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 4px 32px rgba(0,0,0,0.35);
+  --c-shadow-elevated: 0 2px 4px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.40);
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: var(--font-ui);
+  color: var(--c-text);
+  background: var(--c-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 200ms;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--c-muted); }
+
+/* ── Focus ring ─────────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--c-brand-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Animations ─────────────────────────────────────────────── */
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* ── Reduced motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
