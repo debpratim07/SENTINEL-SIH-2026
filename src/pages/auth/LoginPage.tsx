@@ -235,8 +235,11 @@ export default function LoginPage({ onLogin }: Props) {
             </form>
 
             <p className="mt-5 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Demo credentials are prefilled
+              Prototype preview · sample data
             </p>
+            <a href="/workspace" className="mt-3 block text-center text-[12px] font-semibold" style={{ color: '#F46F29' }}>
+              Open connected workspace
+            </a>
           </div>
         ) : forgotSent ? (
           <div

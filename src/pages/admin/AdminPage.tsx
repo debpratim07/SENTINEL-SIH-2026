@@ -511,7 +511,7 @@ function IntegrationsTab() {
             <div className="flex items-start gap-3">
               <div
                 className="mt-0.5 h-3 w-3 flex-shrink-0 rounded-full"
-                style={{ background: intg.status === 'Connected' ? '#16A34A' : intg.status === 'Active Prototype' ? '#D97706' : '#94A3B8' }}
+                style={{ background: intg.status === 'Active Prototype' ? '#D97706' : '#94A3B8' }}
               />
               <div>
                 <div className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>{intg.name}</div>
