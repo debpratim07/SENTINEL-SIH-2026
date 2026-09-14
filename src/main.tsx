@@ -4,6 +4,8 @@ import App from './App'
 import ConnectedWorkspace from './pages/ConnectedWorkspace'
 import './index.css'
 import { authCallbackRoute } from './lib/auth-callback'
+import { ConnectedAuthProvider } from './context/ConnectedAuthContext'
+import { ConnectedProjectProvider } from './context/ConnectedProjectContext'
 
 const callback = authCallbackRoute(new URL(window.location.href))
 if (callback.pathname !== window.location.pathname) {
@@ -12,6 +14,12 @@ if (callback.pathname !== window.location.pathname) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {callback.pathname === '/workspace' ? <ConnectedWorkspace authError={callback.error} /> : <App />}
+    {callback.pathname === '/workspace' ? (
+      <ConnectedAuthProvider>
+        <ConnectedProjectProvider>
+          <ConnectedWorkspace authError={callback.error} />
+        </ConnectedProjectProvider>
+      </ConnectedAuthProvider>
+    ) : <App />}
   </React.StrictMode>,
 )

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState } from 'react'
 
+// Prototype-only UI roles. Real permissions come from /api/me membership and
+// remain enforced by the connected API and database; never authorize with this context.
 export type UserRole =
   | 'site-supervisor'
   | 'discipline-engineer'

@@ -1,30 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
-import { api, supabase } from '../lib/supabase'
+import { useConnectedAuth } from '../context/ConnectedAuthContext'
+import { useConnectedProject } from '../context/ConnectedProjectContext'
+import { approveActual, captureManualEvent, getProjectWorkspace } from '../lib/connected-api'
+import type { ProposedEvent, ProjectWorkspaceResponse, ScheduleActivity } from '../lib/connected-types'
 import './connected-workspace.css'
 
-interface Project { id:string; name:string; timezone:string }
-interface Identity { user:{id:string;email:string}; projects:Project[]; memberships:{project_id:string;role:string}[] }
-interface Activity { id:string; external_id:string; name:string; level:string; area:string|null; planned_start:string|null; planned_finish:string|null }
-interface Actual { activity_id:string; actual_start:string|null; actual_finish:string|null }
-interface Event { id:string; event_type:string; actual_date:string|null; revision:number; review_status:string; source_quote:string; report:{raw_text:string;report_date:string} }
-interface Audit { id:string; action:string; created_at:string; record_id:string }
-interface Workspace { events:Event[]; activities:Activity[]; actuals:Actual[]; audit:Audit[]; limit:number }
-const empty:Workspace={events:[],activities:[],actuals:[],audit:[],limit:200}
+const empty:ProjectWorkspaceResponse={events:[],activities:[],actuals:[],audit:[],limit:200}
 const readable=(value:string)=>value.replace(/[_-]/g,' ')
 
 function AccountForm({initialError=''}:{initialError?:string}) {
+  const auth=useConnectedAuth()
   const [signup,setSignup]=useState(false), [busy,setBusy]=useState(false)
   const [message,setMessage]=useState(''), [error,setError]=useState(initialError)
   async function submit(e:React.FormEvent<HTMLFormElement>) {
-    e.preventDefault(); if (!supabase || busy) return
+    e.preventDefault(); if (!auth.configured || busy) return
     const form=new FormData(e.currentTarget)
     const email=String(form.get('email')??'').trim(), password=String(form.get('password')??'')
     setBusy(true); setError(''); setMessage('')
     try {
-      const result=signup ? await supabase.auth.signUp({email,password,options:{emailRedirectTo:`${window.location.origin}/workspace`}}) : await supabase.auth.signInWithPassword({email,password})
-      if (result.error) throw result.error
-      if (signup && !result.data.session) setMessage('Check your email for the account confirmation, then return here and sign in. Project access is assigned separately.')
+      if(signup){
+        const result=await auth.signUp(email,password)
+        if(result.confirmationRequired)setMessage('Check your email for the account confirmation, then return here and sign in. Project access is assigned separately.')
+      }else await auth.signIn(email,password)
     } catch (e) { setError(e instanceof Error?e.message:'Unable to sign in. Please retry.') }
     finally { setBusy(false) }
   }
@@ -32,14 +29,14 @@ function AccountForm({initialError=''}:{initialError?:string}) {
     <p className="sw-eyebrow">SENTINEL · PROJECT WORKSPACE</p>
     <h1>{signup?'Create your account':'Welcome back'}</h1>
     <p className="sw-muted">Use your project account to capture and verify progress.</p>
-    {!supabase && <p role="alert">The project connection needs to be configured before you can sign in.</p>}
+    {!auth.configured && <p role="alert">The project connection needs to be configured before you can sign in.</p>}
     <form onSubmit={submit}>
       <label>Email<input name="email" type="email" autoComplete="email" required disabled={busy}/></label>
       <label>Password<input name="password" type="password" autoComplete={signup?'new-password':'current-password'} minLength={signup?12:undefined} required disabled={busy}/></label>
       {signup && <p className="sw-muted">Use at least 12 characters. Creating an account does not grant access to any project.</p>}
       {error && <p className="sw-error" role="alert">{error}</p>}
       {message && <p className="sw-notice" role="status">{message}</p>}
-      <button className="sw-primary" disabled={busy||!supabase}>{busy?'Please wait…':signup?'Create account':'Sign in'}</button>
+      <button className="sw-primary" disabled={busy||!auth.configured}>{busy?'Please wait…':signup?'Create account':'Sign in'}</button>
     </form>
     <button className="sw-link" disabled={busy} onClick={()=>{setSignup(!signup);setError('');setMessage('')}}>{signup?'Already have an account? Sign in':'Create an account'}</button>
     <a className="sw-link" href="/">View the original prototype with sample data</a>
@@ -52,12 +49,17 @@ function CaptureForm({project,onSaved}:{project:string;onSaved:()=>Promise<void>
   async function submit(e:React.FormEvent<HTMLFormElement>) {
     e.preventDefault(); if (busy) return
     const form=e.currentTarget, fields=new FormData(form)
-    const payload={report_date:fields.get('report_date'),text:fields.get('text'),event_type:fields.get('event_type'),actual_date:fields.get('actual_date')||null,source_quote:fields.get('source_quote')}
+    const payload={
+      report_date:String(fields.get('report_date')??''),text:String(fields.get('text')??''),
+      event_type:String(fields.get('event_type')??'') as ProposedEvent['event_type'],
+      actual_date:String(fields.get('actual_date')||'')||null,
+      source_quote:String(fields.get('source_quote')??''),
+    }
     const signature=JSON.stringify(payload)
     if (pending.current?.signature!==signature) pending.current={signature,key:crypto.randomUUID()}
     setBusy(true);setMessage('');setError('')
     try {
-      await api(`/api/projects/${project}/events`,{...payload,request_key:pending.current.key})
+      await captureManualEvent(project,{...payload,request_key:pending.current.key})
       form.reset();pending.current=null;setMessage('Report and proposed event saved. A planner must review the actual before it changes the schedule.')
       await onSaved()
     } catch(e) {setError(e instanceof Error?e.message:'Unable to save. Please retry.')}
@@ -77,18 +79,18 @@ function CaptureForm({project,onSaved}:{project:string;onSaved:()=>Promise<void>
   </section>
 }
 
-function ReviewEvent({event,activities,project,canReview,onSaved}:{event:Event;activities:Activity[];project:string;canReview:boolean;onSaved:()=>Promise<void>}) {
+function ReviewEvent({event,activities,project,canReview,onSaved}:{event:ProposedEvent;activities:ScheduleActivity[];project:string;canReview:boolean;onSaved:()=>Promise<void>}) {
   const [busy,setBusy]=useState(false),[error,setError]=useState('')
   const pending=useRef<{signature:string;key:string}|null>(null)
   const supported=event.actual_date && ['start','finish'].includes(event.event_type)
   async function submit(e:React.FormEvent<HTMLFormElement>) {
     e.preventDefault();if(busy)return
     const fields=new FormData(e.currentTarget)
-    const payload={event_id:event.id,expected_revision:event.revision,activity_id:fields.get('activity_id'),reason:fields.get('reason')}
+    const payload={event_id:event.id,expected_revision:event.revision,activity_id:String(fields.get('activity_id')??''),reason:String(fields.get('reason')??'')}
     const signature=JSON.stringify(payload)
     if(pending.current?.signature!==signature)pending.current={signature,key:crypto.randomUUID()}
     setBusy(true);setError('')
-    try {await api(`/api/projects/${project}/reviews`,{...payload,request_key:pending.current.key});await onSaved()}
+    try {await approveActual(project,{...payload,request_key:pending.current.key});await onSaved()}
     catch(e){setError(e instanceof Error?e.message:'Approval failed. Please retry.')}
     finally{setBusy(false)}
   }
@@ -106,48 +108,38 @@ function ReviewEvent({event,activities,project,canReview,onSaved}:{event:Event;a
 }
 
 export default function ConnectedWorkspace({authError=''}:{authError?:string}) {
-  const [session,setSession]=useState<Session|null>(null),[ready,setReady]=useState(false)
-  const [identity,setIdentity]=useState<Identity|null>(null),[project,setProject]=useState('')
-  const [data,setData]=useState<Workspace>(empty),[error,setError]=useState(''),[loading,setLoading]=useState(false)
+  const auth=useConnectedAuth()
+  const access=useConnectedProject()
+  const project=access.project?.id??''
+  const scope=`${auth.user?.id??''}:${project}`
+  const [workspace,setWorkspace]=useState<{scope:string;data:ProjectWorkspaceResponse}>({scope:'',data:empty})
+  const data=workspace.scope===scope?workspace.data:empty
+  const [error,setError]=useState(''),[loading,setLoading]=useState(false)
   const generation=useRef(0)
-  useEffect(()=>{
-    if(!supabase){setReady(true);return}
-    let live=true
-    const {data:subscription}=supabase.auth.onAuthStateChange((_event,value)=>{if(live){setSession(value);setReady(true)}})
-    return ()=>{live=false;subscription.subscription.unsubscribe()}
-  },[])
-  useEffect(()=>{
-    let live=true;setIdentity(null);setData(empty);setError('')
-    if(!session){setProject('');return}
-    api<Identity>('/api/me').then(value=>{if(live){setIdentity(value);setProject(current=>value.projects.some(p=>p.id===current)?current:value.projects[0]?.id??'')}}).catch(e=>{if(live)setError(e.message)})
-    return ()=>{live=false}
-  },[session?.user.id])
   async function refresh(){
     if(!project)return
     const version=++generation.current;setLoading(true);setError('')
-    try{const value=await api<Workspace>(`/api/projects/${project}/workspace`);if(version===generation.current)setData(value)}
+    try{const value=await getProjectWorkspace(project);if(version===generation.current)setWorkspace({scope,data:value})}
     catch(e){if(version===generation.current)setError(e instanceof Error?e.message:'Unable to load this project.')}
     finally{if(version===generation.current)setLoading(false)}
   }
-  useEffect(()=>{setData(empty);void refresh();return()=>{generation.current++}},[project])
+  useEffect(()=>{setWorkspace({scope:'',data:empty});setError('');void refresh();return()=>{generation.current++}},[project,auth.user?.id])
   async function signOut(){
-    if(!supabase)return
-    const {error}=await supabase.auth.signOut({scope:'local'})
-    if(error)setError(error.message)
+    try{await auth.signOut()}catch(cause){setError(cause instanceof Error?cause.message:'Unable to sign out.')}
   }
-  if(!ready)return <div className="sw-account">Loading your session…</div>
-  if(!session)return <div className="sentinel-workspace"><AccountForm initialError={authError}/></div>
-  const role=identity?.memberships.find(m=>m.project_id===project)?.role??''
+  if(auth.loading)return <div className="sw-account">Loading your session…</div>
+  if(!auth.session)return <div className="sentinel-workspace"><AccountForm initialError={authError}/></div>
+  const role=access.role??''
   const canCapture=['site-supervisor','discipline-engineer','planner','project-controls','administrator'].includes(role)
   const canReview=['planner','project-controls','administrator'].includes(role)
   const canAudit=['planner','project-controls','administrator'].includes(role)
-  return <div className="sentinel-workspace"><header className="sw-header"><div><a href="/workspace" className="sw-wordmark">SENTINEL<span>●</span></a><p className="sw-muted">Field progress · Human verification</p></div><div className="sw-header-account"><span>{identity?.user.email??session.user.email}</span><button onClick={signOut}>Sign out</button></div></header>
+  return <div className="sentinel-workspace"><header className="sw-header"><div><a href="/workspace" className="sw-wordmark">SENTINEL<span>●</span></a><p className="sw-muted">Field progress · Human verification</p></div><div className="sw-header-account"><span>{access.identity?.user.email??auth.user?.email}</span><button onClick={signOut}>Sign out</button></div></header>
     <main className="sw-main"><div className="sw-title"><div><p className="sw-eyebrow">SIH26122 · MANUAL WORKFLOW</p><h1>Progress workspace</h1></div><button disabled={loading||!project} onClick={()=>void refresh()}>{loading?'Refreshing…':'Refresh records'}</button></div>
-      {error&&<p className="sw-error" role="alert">{error}</p>}
-      {!identity&&!error&&<p>Loading project access…</p>}
-      {identity&&identity.projects.length===0&&<section className="sw-card"><h2>Your account is ready</h2><p>Project access has not been assigned yet. Your project administrator must add you before you can view or submit work.</p><button onClick={()=>window.location.reload()}>Check access again</button></section>}
-      {identity&&identity.projects.length>0&&<>
-        <div className="sw-project"><label>Project<select value={project} onChange={e=>setProject(e.target.value)}>{identity.projects.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><span className="sw-badge">{readable(role)}</span></div>
+      {(error||access.error)&&<p className="sw-error" role="alert">{error||access.error}</p>}
+      {!access.identity&&!access.error&&<p>Loading project access…</p>}
+      {access.identity&&access.projects.length===0&&<section className="sw-card"><h2>Your account is ready</h2><p>Project access has not been assigned yet. Your project administrator must add you before you can view or submit work.</p><button onClick={()=>void access.refresh()}>Check access again</button></section>}
+      {access.identity&&access.projects.length>0&&<>
+        <div className="sw-project"><label>Project<select value={project} onChange={e=>access.selectProject(e.target.value)}>{access.projects.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><span className="sw-badge">{readable(role)}</span></div>
         <p className="sw-muted">Reports and approvals are saved to your project. AI matching is not enabled in this workflow yet.</p>
         <div className="sw-grid">{canCapture&&<CaptureForm key={project} project={project} onSaved={refresh}/>}
           <section className="sw-card"><p className="sw-eyebrow">{canReview?'REVIEW':'PROGRESS RECORDS'}</p><h2>Reported events</h2><p className="sw-muted">Showing up to {data.limit} latest events. Dates become trusted after authorized verification.</p>
