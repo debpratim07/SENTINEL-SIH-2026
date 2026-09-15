@@ -3,6 +3,7 @@ import type { AuditItem, ProjectRole } from './connected-types'
 export const AUDIT_ACTION_LABELS: Record<AuditItem['action'], string> = {
   event_captured: 'Field Event Captured',
   actual_verified: 'Actual Verified',
+  membership_changed: 'Membership Changed',
 }
 
 const DETAIL_LABELS: Record<string, string> = {
@@ -15,6 +16,12 @@ const DETAIL_LABELS: Record<string, string> = {
   previous_actual_start: 'Previous actual start',
   previous_actual_finish: 'Previous actual finish',
   reason: 'Human review reason',
+  target_user_id: 'Target user ID',
+  previous_role: 'Previous role',
+  new_role: 'New role',
+  previous_active: 'Previous access state',
+  new_active: 'New access state',
+  operation: 'Membership operation',
 }
 
 const DETAIL_ORDER = Object.keys(DETAIL_LABELS)

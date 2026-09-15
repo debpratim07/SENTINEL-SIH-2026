@@ -7,6 +7,11 @@ export type ProjectRole =
   | 'project-manager'
   | 'administrator'
 
+export const PROJECT_ROLES: readonly ProjectRole[] = [
+  'site-supervisor', 'discipline-engineer', 'planner', 'project-controls',
+  'project-manager', 'administrator',
+]
+
 export interface AuthenticatedIdentity {
   id: string
   email: string
@@ -75,7 +80,7 @@ export interface AuditItem {
   id: string
   project_id: string
   actor_id: string
-  action: 'event_captured' | 'actual_verified'
+  action: 'event_captured' | 'actual_verified' | 'membership_changed'
   record_id: string
   detail: Record<string, unknown>
   created_at: string
@@ -109,3 +114,15 @@ export interface ApprovalInput {
 export interface SavedId {
   id: string
 }
+
+export interface ManagedProjectMember {
+  user_id: string
+  email: string
+  role: ProjectRole
+  active: boolean
+}
+
+export interface ProjectMembersResponse { members: ManagedProjectMember[] }
+export interface ProjectMemberResponse { member: ManagedProjectMember }
+export interface AssignProjectMemberInput { email: string; role: ProjectRole }
+export interface UpdateProjectMemberInput { role: ProjectRole; active: boolean }

@@ -41,7 +41,7 @@ export function ConnectedAuthProvider({ children }: { children: React.ReactNode 
     async signUp(email, password) {
       if (!supabase) throw new Error('The project connection has not been configured.')
       const { data, error } = await supabase.auth.signUp({
-        email, password, options: { emailRedirectTo: `${window.location.origin}/workspace` },
+        email, password, options: { emailRedirectTo: `${window.location.origin}/` },
       })
       if (error) throw error
       return { confirmationRequired: !data.session }

@@ -7,13 +7,8 @@ import { canCaptureProgress } from '../lib/manual-capture'
 import {
   LayoutDashboard,
   ClipboardCheck,
-  BarChart3,
   CalendarDays,
   ListChecks,
-  AlertTriangle,
-  TrendingUp,
-  ShieldCheck,
-  BookOpen,
   ScrollText,
   Settings2,
   ChevronLeft,
@@ -113,10 +108,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'EXECUTION',
-    items: [
-      { id: 'actuals', label: 'Actuals', icon: ClipboardCheck },
-      { id: 'reports', label: 'Reports', icon: BarChart3 },
-    ],
+    items: [{ id: 'actuals', label: 'Verified Actuals', icon: ClipboardCheck }],
   },
   {
     label: 'PLANNING',
@@ -124,18 +116,7 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'REVIEW',
-    items: [
-      { id: 'review-queue', label: 'Review Queue', icon: ListChecks },
-      { id: 'exceptions', label: 'Exceptions', icon: AlertTriangle },
-    ],
-  },
-  {
-    label: 'INSIGHTS',
-    items: [
-      { id: 'performance', label: 'Performance', icon: TrendingUp },
-      { id: 'data-quality', label: 'Data Quality', icon: ShieldCheck },
-      { id: 'exec-knowledge', label: 'Execution Knowledge', icon: BookOpen },
-    ],
+    items: [{ id: 'review-queue', label: 'Review Queue', icon: ListChecks }],
   },
   {
     label: 'SYSTEM',

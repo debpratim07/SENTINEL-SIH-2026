@@ -183,8 +183,7 @@ export default function LogWithSentinelDrawer({ open, onClose }: Props) {
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-3 px-7 py-4" style={{ borderTop: '1px solid var(--c-border)' }}>
-          {savedEventId ? <><a href="/workspace" className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ border: '1px solid var(--c-border)', color: 'var(--c-text)' }}>View connected workspace</a>
-            <button onClick={captureAnother} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)' }}>Capture another update</button>
+          {savedEventId ? <><button onClick={captureAnother} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)' }}>Capture another update</button>
             <button onClick={handleClose} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ color: 'var(--c-muted)' }}>Close</button></>
           : <><button onClick={handleClose} disabled={busy} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ color: 'var(--c-muted)' }}>Cancel</button>
             <button form="connected-manual-capture" type="submit" disabled={busy || !canCapture || !access.project} className="rounded-[9px] px-5 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)', boxShadow: '0 2px 8px rgba(244,111,41,0.28)' }}>{busy ? 'Saving securely…' : 'Save for human review'}</button></>}

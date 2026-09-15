@@ -8,6 +8,7 @@ class HttpError extends Error {
   constructor(status: number, message: string) { super(message); this.status = status }
 }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const projectRoles = new Set(['site-supervisor','discipline-engineer','planner','project-controls','project-manager','administrator'])
 function uuid(value: unknown): string {
   if (typeof value !== 'string' || !uuidPattern.test(value)) throw new HttpError(400, 'A valid record identifier is required.')
   return value
@@ -38,6 +39,9 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
 function databaseError(error: { code?: string; message?: string }): never {
   const message=error.message ?? ''
   if (error.code === '42501') throw new HttpError(403, 'Your account does not have permission for this action.')
+  if (message.includes('sentinel_account_not_found')) throw new HttpError(404, 'No SENTINEL account exists for this email yet. Ask the user to create an account before assigning project access.')
+  if (message.includes('last_active_administrator')) throw new HttpError(409, 'Every project must retain at least one active Administrator.')
+  if (message.includes('project_membership_not_found')) throw new HttpError(404, 'That project membership does not exist.')
   if (error.code === 'P0002') throw new HttpError(404, 'That record is not available in this project.')
   if (message.includes('existing_actual_requires')) throw new HttpError(409, 'This activity already has that actual. Review the conflicting or duplicate report; no date was overwritten.')
   if (error.code === '40001' || error.code === '23505') throw new HttpError(409, 'The record changed or was already reviewed. Refresh before continuing.')
@@ -84,13 +88,42 @@ export function createHandler(config: Config, makeClient: typeof createClient = 
         if (projects.error) databaseError(projects.error)
         return send(200,{user:{id:identity.user.id,email:identity.user.email},memberships:memberships.data,projects:projects.data})
       }
-      const match=pathname.match(/^\/api\/projects\/([^/]+)\/(workspace|events|reviews)$/)
+      const match=pathname.match(/^\/api\/projects\/([^/]+)\/(workspace|events|reviews|members)(?:\/([^/]+))?$/)
       if (!match) throw new HttpError(404,'This endpoint does not exist.')
-      const project=uuid(match[1]), action=match[2]
+      const project=uuid(match[1]), action=match[2], target=match[3]
       const member=await client.from('sentinel_memberships').select('role').eq('project_id',project).eq('user_id',identity.user.id).eq('active',true).maybeSingle()
       if (member.error) databaseError(member.error)
       if (!member.data) throw new HttpError(403,'You do not have access to this project.')
       const role=member.data.role as string
+      if (action === 'members') {
+        if (role !== 'administrator') throw new HttpError(403,'Only a project Administrator can manage Team Access.')
+        if (req.method === 'GET' && !target) {
+          const result=await client.rpc('sentinel_list_project_members',{p_project:project})
+          if (result.error) databaseError(result.error)
+          const members=(Array.isArray(result.data) ? result.data : []).map((item:Record<string,unknown>)=>({
+            user_id:item.user_id,email:item.email,role:item.role,active:item.active,
+          }))
+          return send(200,{members})
+        }
+        if (req.method !== 'POST') throw new HttpError(405,'This method is not supported.')
+        const input=await body(req)
+        if (!projectRoles.has(String(input.role))) throw new HttpError(400,'Choose a supported project role.')
+        let result
+        if (target === 'assign') {
+          const email=text(input.email,320).trim().toLowerCase()
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400,'Enter a valid exact account email.')
+          result=await client.rpc('sentinel_assign_project_member',{p_project:project,p_email:email,p_role:input.role})
+        } else if (target) {
+          if (typeof input.active !== 'boolean') throw new HttpError(400,'Choose whether project access is active.')
+          result=await client.rpc('sentinel_update_project_member',{
+            p_project:project,p_target_user:uuid(target),p_role:input.role,p_active:input.active,
+          })
+        } else throw new HttpError(404,'This endpoint does not exist.')
+        if (result.error) databaseError(result.error)
+        const item=Array.isArray(result.data) ? result.data[0] : result.data
+        if (!item) throw new HttpError(503,'The membership service did not return the saved member.')
+        return send(200,{member:{user_id:item.user_id,email:item.email,role:item.role,active:item.active}})
+      }
       if (req.method === 'GET' && action === 'workspace') {
         const current=await client.from('sentinel_projects').select('active_schedule_id').eq('id',project).single()
         if (current.error) databaseError(current.error)

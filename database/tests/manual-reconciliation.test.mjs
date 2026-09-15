@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 let db;
 const id = n => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const P = id(1), Q = id(2), V = id(3), W = id(4), OLD = id(5);
-const SUP = id(10), PLAN = id(11), PM = id(12), ADMIN = id(13), OTHER = id(14), CONTROL = id(15), ENG = id(16), REVOKED = id(17);
+const SUP = id(10), PLAN = id(11), PM = id(12), ADMIN = id(13), OTHER = id(14), CONTROL = id(15), ENG = id(16), REVOKED = id(17), MEMBER = id(18);
 const roles = [[SUP,'site-supervisor'],[PLAN,'planner'],[PM,'project-manager'],[ADMIN,'administrator'],[CONTROL,'project-controls'],[ENG,'discipline-engineer']];
 const A = id(20), B = id(21), QA = id(22), L5 = id(23), STALE = id(24), D = id(25);
 let seq = 100;
@@ -38,7 +38,7 @@ before(async () => {
   db = new PGlite();
   await db.exec(`
     create role anon nologin; create role authenticated nologin;
-    create schema auth; create table auth.users(id uuid primary key);
+    create schema auth; create table auth.users(id uuid primary key,email text unique);
     create function auth.uid() returns uuid language sql stable as
       $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
     grant usage on schema auth, public to authenticated,anon;
@@ -46,7 +46,8 @@ before(async () => {
   `);
   await db.exec(await readFile(new URL('../migrations/001_manual_reconciliation.sql', import.meta.url), 'utf8'));
   await db.exec(await readFile(new URL('../migrations/002_administrator_workflow.sql', import.meta.url), 'utf8'));
-  for (const user of [SUP,PLAN,PM,ADMIN,OTHER,CONTROL,ENG,REVOKED]) await db.query('insert into auth.users values($1)',[user]);
+  await db.exec(await readFile(new URL('../migrations/003_admin_membership_management.sql', import.meta.url), 'utf8'));
+  for (const user of [SUP,PLAN,PM,ADMIN,OTHER,CONTROL,ENG,REVOKED,MEMBER]) await db.query('insert into auth.users(id,email) values($1,$2)',[user,`${user}@example.test`]);
   await db.query('insert into public.sentinel_projects(id,name) values($1,$2),($3,$4)',[P,'Synthetic project A',Q,'Synthetic project B']);
   for (const [user, role] of roles) await db.query('insert into public.sentinel_memberships(project_id,user_id,role) values($1,$2,$3)',[P,user,role]);
   await db.query("insert into public.sentinel_memberships values($1,$2,'planner',true),($3,$4,'planner',false)",[Q,OTHER,P,REVOKED]);
@@ -191,4 +192,29 @@ test('administrator can capture and approve in their project without bypassing i
   await assert.rejects(as(ADMIN,"update public.sentinel_memberships set role='planner'"),/permission denied/);
   await assert.rejects(as(ADMIN,"select public.sentinel_require_role($1,array['planner'])",[P]),/permission denied/);
   await assert.rejects(approve(await capture(ADMIN,'start',null),D,ADMIN),/actual_date_not_supported/);
+});
+
+test('administrator lists only same-project members while non-admin listing is rejected',async()=>{
+  const listed=(await as(ADMIN,'select * from public.sentinel_list_project_members($1)',[P])).rows;
+  assert.ok(listed.length>=roles.length);assert.ok(listed.every(row=>row.email.endsWith('@example.test')));
+  assert.equal(listed.some(row=>row.user_id===OTHER),false);
+  await assert.rejects(as(PLAN,'select * from public.sentinel_list_project_members($1)',[P]),/project_administrator_required/);
+});
+test('administrator assigns an exact existing account, changes role, deactivates and reactivates access with audit',async()=>{
+  let saved=(await as(ADMIN,'select * from public.sentinel_assign_project_member($1,$2,$3)',[P,`${MEMBER}@example.test`,'discipline-engineer'])).rows[0];
+  assert.deepEqual(saved,{user_id:MEMBER,email:`${MEMBER}@example.test`,role:'discipline-engineer',active:true});
+  saved=(await as(ADMIN,'select * from public.sentinel_update_project_member($1,$2,$3,$4)',[P,MEMBER,'planner',false])).rows[0];
+  assert.equal(saved.role,'planner');assert.equal(saved.active,false);assert.equal((await as(MEMBER,'select * from public.sentinel_projects')).rows.length,0);
+  saved=(await as(ADMIN,'select * from public.sentinel_assign_project_member($1,$2,$3)',[P,`${MEMBER}@example.test`,'project-controls'])).rows[0];
+  assert.equal(saved.role,'project-controls');assert.equal(saved.active,true);
+  assert.equal((await as(ADMIN,"select * from public.sentinel_audit_events where action='membership_changed' and record_id=$1",[MEMBER])).rows.length,3);
+});
+test('membership administration rejects unsupported roles, unknown accounts and cross-project mutation',async()=>{
+  await assert.rejects(as(ADMIN,'select * from public.sentinel_assign_project_member($1,$2,$3)',[P,'unknown@example.test','planner']),/sentinel_account_not_found/);
+  await assert.rejects(as(ADMIN,'select * from public.sentinel_assign_project_member($1,$2,$3)',[P,`${MEMBER}@example.test`,'owner']),/unsupported_project_role/);
+  await assert.rejects(as(ADMIN,'select * from public.sentinel_update_project_member($1,$2,$3,$4)',[Q,OTHER,'planner',false]),/project_administrator_required/);
+});
+test('last active administrator cannot be demoted or deactivated',async()=>{
+  await assert.rejects(as(ADMIN,'select * from public.sentinel_update_project_member($1,$2,$3,$4)',[P,ADMIN,'planner',true]),/last_active_administrator/);
+  await assert.rejects(as(ADMIN,'select * from public.sentinel_update_project_member($1,$2,$3,$4)',[P,ADMIN,'administrator',false]),/last_active_administrator/);
 });

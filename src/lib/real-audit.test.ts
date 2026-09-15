@@ -15,6 +15,7 @@ test('audit mapping is project scoped and has only real action labels', () => {
   assert.deepEqual(projectAudit('p1', [capture, { ...capture, id: 'a3', project_id: 'p2' }]).map(item => item.id), ['a1'])
   assert.equal(auditActionLabel('event_captured'), 'Field Event Captured')
   assert.equal(auditActionLabel('actual_verified'), 'Actual Verified')
+  assert.equal(auditActionLabel('membership_changed'), 'Membership Changed')
 })
 
 test('detail rendering orders known real fields and safely omits nested values', () => {

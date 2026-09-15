@@ -148,7 +148,7 @@ export default function ReviewMatchDrawer({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-3 px-7 py-4" style={{ borderTop: '1px solid var(--c-border)' }}>
-          {decisionId ? <><a href="/workspace" className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ border: '1px solid var(--c-border)', color: 'var(--c-text)' }}>View connected workspace</a><button onClick={handleClose} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{ background: 'linear-gradient(135deg,#F46F29,#F59B4C)' }}>Done</button></>
+          {decisionId ? <button onClick={handleClose} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{ background: 'linear-gradient(135deg,#F46F29,#F59B4C)' }}>Done</button>
           : <><button onClick={handleClose} disabled={busy} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ color: 'var(--c-muted)' }}>Close</button>{event && canReview && !blockReason && <button form="connected-human-review" type="submit" disabled={busy || !activityId || !reason.trim()} className="rounded-[9px] px-5 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#F46F29,#F59B4C)', boxShadow: '0 2px 8px rgba(244,111,41,0.28)' }}>{busy ? 'Verifying securely…' : 'Verify and save actual'}</button>}</>}
         </div>
       </div>

@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
 import type {
-  ApprovalInput, IdentityResponse, ManualCaptureInput, ProjectWorkspaceResponse, SavedId,
+  ApprovalInput, AssignProjectMemberInput, IdentityResponse, ManualCaptureInput,
+  ProjectMemberResponse, ProjectMembersResponse, ProjectWorkspaceResponse, SavedId,
+  UpdateProjectMemberInput,
 } from './connected-types'
 
 async function request<T>(path: string, body?: unknown): Promise<T> {
@@ -32,3 +34,9 @@ export const captureManualEvent = (projectId: string, input: ManualCaptureInput)
   request<SavedId>(`/api/projects/${encodeURIComponent(projectId)}/events`, input)
 export const approveActual = (projectId: string, input: ApprovalInput) =>
   request<SavedId>(`/api/projects/${encodeURIComponent(projectId)}/reviews`, input)
+export const getProjectMembers = (projectId: string) =>
+  request<ProjectMembersResponse>(`/api/projects/${encodeURIComponent(projectId)}/members`)
+export const assignProjectMember = (projectId: string, input: AssignProjectMemberInput) =>
+  request<ProjectMemberResponse>(`/api/projects/${encodeURIComponent(projectId)}/members/assign`, input)
+export const updateProjectMember = (projectId: string, userId: string, input: UpdateProjectMemberInput) =>
+  request<ProjectMemberResponse>(`/api/projects/${encodeURIComponent(projectId)}/members/${encodeURIComponent(userId)}`, input)
