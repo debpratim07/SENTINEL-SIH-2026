@@ -179,7 +179,7 @@ function AppShell() {
         />
 
         <div role="note" className="shrink-0 px-7 py-2 text-[12px]" style={{ background: 'var(--c-brand-tint)', color: 'var(--c-text)', borderBottom: '1px solid var(--c-border)' }}>
-          Capture, human review, schedule and verified actuals are connected to this project. Audit and analytics screens still use sample data; their real audit records remain in <a className="font-semibold underline" href="/workspace">Connected Workspace</a>.
+          Capture, human review, schedule, verified actuals and recent audit history are connected to this project. Dashboard, reports, exceptions and insights still use sample data.
         </div>
 
         <main

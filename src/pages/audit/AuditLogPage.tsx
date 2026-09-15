@@ -1,490 +1,54 @@
-import { useState, useMemo } from 'react'
-import { Search, ChevronDown, X, Shield } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { CheckCircle2, ChevronDown, RefreshCw, Search, Shield, X } from 'lucide-react'
+import { useConnectedProject } from '../../context/ConnectedProjectContext'
+import { useConnectedWorkspace } from '../../hooks/useConnectedWorkspace'
+import type { AuditItem } from '../../lib/connected-types'
+import { auditActionLabel, auditDetailFields, canViewAudit, filterAudit, formatAuditTimestamp, projectAudit } from '../../lib/real-audit'
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
-interface AuditRecord {
-  id: string
-  timestamp: string
-  action: string
-  actionType: 'match-verified' | 'actual-updated' | 'candidate-suggested' | 'actual-captured' | 'conflict-flagged' | 'report-processed' | 'user-action'
-  entity: string
-  entityType: 'actual' | 'schedule-activity' | 'report' | 'exception' | 'system'
-  actor: string
-  actorType: 'human' | 'system'
-  source: string
-  change: string
-  result: string
-  // detail fields
-  oldValue?: string
-  newValue?: string
-  decisionContext?: string
-  relatedEvidence?: string
-  relatedActual?: string
-  relatedScheduleActivity?: string
-  matchConfidence?: string
-  matchingSignals?: string[]
+function FilterSelect({ label, value, options, onChange }: { label: string; value: string; options: Array<{ value: string; label: string }>; onChange: (value: string) => void }) {
+  return <div className="relative"><select value={value} onChange={event => onChange(event.target.value)} className="h-8 appearance-none rounded-[8px] pl-3 pr-8 text-[12px] outline-none" style={{ background: value ? 'var(--c-brand-tint)' : 'var(--c-card)', border: '1px solid var(--c-border)', color: value ? '#F46F29' : 'var(--c-muted)' }}><option value="">{label}</option>{options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><ChevronDown size={11} className="pointer-events-none absolute right-2.5 top-2.5" color="var(--c-muted)" /></div>
 }
 
-// ── Demo data ─────────────────────────────────────────────────────────────────
-
-const AUDIT_RECORDS: AuditRecord[] = [
-  {
-    id: 'AUD-001',
-    timestamp: '28 Aug 2026 · 10:44',
-    action: 'Match verified',
-    actionType: 'match-verified',
-    entity: 'ACT-2026-0842',
-    entityType: 'actual',
-    actor: 'Arjun Mehta',
-    actorType: 'human',
-    source: 'Supervisor Update',
-    change: 'ERECT LINE 24-XX',
-    result: 'Verified',
-    oldValue: 'AI Suggested (91%)',
-    newValue: 'Verified — ERECT LINE 24-XX',
-    decisionContext: 'Planner reviewed candidate and confirmed schedule relationship.',
-    relatedEvidence: 'Piping_DPR_28Aug.pdf',
-    relatedActual: 'ACT-2026-0842',
-    relatedScheduleActivity: 'ERECT LINE 24-XX',
-    matchConfidence: '91%',
-    matchingSignals: ['Activity terminology match', 'Piping discipline', 'Area B location', 'Date within tolerance'],
-  },
-  {
-    id: 'AUD-002',
-    timestamp: '28 Aug 2026 · 10:44',
-    action: 'Actual Start updated',
-    actionType: 'actual-updated',
-    entity: 'ERECT LINE 24-XX',
-    entityType: 'schedule-activity',
-    actor: 'SENTINEL Schedule Mirror',
-    actorType: 'system',
-    source: 'SENTINEL Schedule Mirror',
-    change: '— → 26 Aug 2026',
-    result: 'Applied',
-    oldValue: 'Not reported',
-    newValue: '26 Aug 2026',
-    decisionContext: 'Schedule mirror applied after planner verification of Actual Start.',
-    relatedActual: 'ACT-2026-0842',
-    relatedScheduleActivity: 'ERECT LINE 24-XX',
-  },
-  {
-    id: 'AUD-003',
-    timestamp: '28 Aug 2026 · 08:43',
-    action: 'Schedule candidate suggested',
-    actionType: 'candidate-suggested',
-    entity: 'ACT-2026-0842',
-    entityType: 'actual',
-    actor: 'SENTINEL',
-    actorType: 'system',
-    source: 'Supervisor Update',
-    change: 'ERECT LINE 24-XX · 91%',
-    result: 'AI Suggested',
-    decisionContext: 'Candidate routed for planner review. Confidence above threshold.',
-    relatedEvidence: 'Piping_DPR_28Aug.pdf',
-    relatedActual: 'ACT-2026-0842',
-    relatedScheduleActivity: 'ERECT LINE 24-XX',
-    matchConfidence: '91%',
-    matchingSignals: ['Activity terminology', 'Discipline match', 'Location match', 'Date proximity'],
-  },
-  {
-    id: 'AUD-004',
-    timestamp: '28 Aug 2026 · 08:42',
-    action: 'Actual captured',
-    actionType: 'actual-captured',
-    entity: 'ACT-2026-0842',
-    entityType: 'actual',
-    actor: 'Supervisor Update',
-    actorType: 'human',
-    source: 'Supervisor Update',
-    change: 'Spool erection',
-    result: 'Recorded',
-    newValue: 'ACT-2026-0842 — Piping, Area B',
-    decisionContext: 'Actual Event extracted from daily progress report.',
-    relatedEvidence: 'Piping_DPR_28Aug.pdf',
-    relatedActual: 'ACT-2026-0842',
-  },
-  {
-    id: 'AUD-005',
-    timestamp: '28 Aug 2026 · 07:55',
-    action: 'Report processed',
-    actionType: 'report-processed',
-    entity: 'Piping_DPR_28Aug.pdf',
-    entityType: 'report',
-    actor: 'SENTINEL',
-    actorType: 'system',
-    source: 'Daily Progress Report',
-    change: '6 Actual Events',
-    result: 'Processed',
-    newValue: '6 events extracted, 5 candidates suggested',
-    decisionContext: 'Automated extraction from uploaded report.',
-  },
-  {
-    id: 'AUD-006',
-    timestamp: '28 Aug 2026 · 07:12',
-    action: 'Conflict flagged',
-    actionType: 'conflict-flagged',
-    entity: 'EXC-001',
-    entityType: 'exception',
-    actor: 'SENTINEL',
-    actorType: 'system',
-    source: 'Multiple sources',
-    change: 'EQUIPMENT ALIGNMENT — P-204',
-    result: 'Blocked',
-    oldValue: 'Source A: 26 Aug 2026',
-    newValue: 'Source B: 27 Aug 2026',
-    decisionContext: 'Conflicting Actual Start dates from two sources. Schedule update blocked.',
-    relatedScheduleActivity: 'EQUIPMENT ALIGNMENT — P-204',
-  },
-  {
-    id: 'AUD-007',
-    timestamp: '27 Aug 2026 · 16:30',
-    action: 'Match verified',
-    actionType: 'match-verified',
-    entity: 'ACT-2026-0838',
-    entityType: 'actual',
-    actor: 'Arjun Mehta',
-    actorType: 'human',
-    source: 'Daily Progress Report',
-    change: 'PIPE SUPPORT INSTALLATION — AREA B',
-    result: 'Verified',
-    matchConfidence: '84%',
-    matchingSignals: ['Activity label', 'Area match', 'Piping discipline'],
-    relatedActual: 'ACT-2026-0838',
-    relatedScheduleActivity: 'PIPE SUPPORT INSTALLATION — AREA B',
-  },
-  {
-    id: 'AUD-008',
-    timestamp: '27 Aug 2026 · 14:20',
-    action: 'User logged in',
-    actionType: 'user-action',
-    entity: 'Arjun Mehta',
-    entityType: 'system',
-    actor: 'Arjun Mehta',
-    actorType: 'human',
-    source: 'Authentication',
-    change: 'Session started',
-    result: 'Authenticated',
-  },
-]
-
-// ── Config ────────────────────────────────────────────────────────────────────
-
-const ACTION_TYPE_LABELS: Record<string, string> = {
-  'match-verified': 'Match Verified',
-  'actual-updated': 'Actual Updated',
-  'candidate-suggested': 'Candidate Suggested',
-  'actual-captured': 'Actual Captured',
-  'conflict-flagged': 'Conflict Flagged',
-  'report-processed': 'Report Processed',
-  'user-action': 'User Action',
-}
-
-const RESULT_COLORS: Record<string, { color: string; bg: string }> = {
-  Verified:      { color: '#16A34A', bg: 'rgba(22,163,74,0.09)' },
-  Applied:       { color: '#2563EB', bg: 'rgba(37,99,235,0.09)' },
-  'AI Suggested':{ color: '#7C3AED', bg: 'rgba(124,58,237,0.09)' },
-  Recorded:      { color: '#64748B', bg: 'rgba(100,116,139,0.10)' },
-  Processed:     { color: '#0891B2', bg: 'rgba(8,145,178,0.09)' },
-  Blocked:       { color: '#DC2626', bg: 'rgba(220,38,38,0.09)' },
-  Authenticated: { color: '#64748B', bg: 'rgba(100,116,139,0.10)' },
-}
-
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function ResultBadge({ result }: { result: string }) {
-  const cfg = RESULT_COLORS[result] ?? { color: '#64748B', bg: 'rgba(100,116,139,0.10)' }
-  return (
-    <span
-      className="rounded-[5px] px-2 py-0.5 text-[11px] font-semibold"
-      style={{ color: cfg.color, background: cfg.bg }}
-    >
-      {result}
-    </span>
-  )
-}
-
-function FilterSelect({ label, value, options, onChange }: {
-  label: string; value: string; options: string[]; onChange: (v: string) => void
-}) {
-  const active = !!value
-  return (
-    <div className="relative flex-shrink-0">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-8 cursor-pointer appearance-none rounded-[8px] pl-3 pr-7 text-[12px] font-medium"
-        style={{
-          background: active ? 'var(--c-brand-tint)' : 'var(--c-card)',
-          border: `1px solid ${active ? 'rgba(244,111,41,0.35)' : 'var(--c-border)'}`,
-          color: active ? '#F46F29' : 'var(--c-muted)',
-          outline: 'none', fontFamily: 'var(--font-ui)',
-        }}
-      >
-        <option value="">{label}</option>
-        {options.map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <ChevronDown size={11} strokeWidth={2.5} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', color: active ? '#F46F29' : 'var(--c-subtle)', pointerEvents: 'none' }} />
+function AuditDetailDrawer({ item, projectName, currentUserId, timeZone, onClose }: { item: AuditItem; projectName: string; currentUserId: string | undefined; timeZone: string; onClose: () => void }) {
+  const fields = auditDetailFields(item.detail)
+  return <><button aria-label="Close audit detail" onClick={onClose} className="fixed inset-0 z-[90] cursor-default bg-black/20" /><aside role="dialog" aria-modal="true" aria-label="Audit record detail" className="fixed bottom-0 right-0 top-0 z-[100] flex w-full max-w-[430px] flex-col" style={{ background: 'var(--c-card)', borderLeft: '1px solid var(--c-border)', boxShadow: '-10px 0 34px rgba(0,0,0,.15)' }}>
+    <header className="flex items-start justify-between border-b p-5" style={{ borderColor: 'var(--c-border)' }}><div><p className="text-[10px] font-bold uppercase tracking-[.08em]" style={{ color: '#F46F29' }}>Connected audit record</p><h2 className="mt-1 text-[18px] font-bold" style={{ color: 'var(--c-text)' }}>{auditActionLabel(item.action)}</h2><p className="mt-1 text-[11px]" style={{ color: 'var(--c-muted)' }}>{formatAuditTimestamp(item.created_at, timeZone)}</p></div><button onClick={onClose} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-[8px]" style={{ color: 'var(--c-muted)' }}><X size={15} /></button></header>
+    <div className="flex-1 overflow-auto p-5"><div className="mb-5 flex items-start gap-2 rounded-[10px] p-3" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}><Shield size={14} className="mt-0.5 shrink-0" color="#64748B" /><p className="text-[11px] leading-5" style={{ color: 'var(--c-muted)' }}>Audit history is read-only and records connected workflow actions. This view provides recent history from the current API window.</p></div>
+      {[['Audit ID',item.id],['Project',projectName],['Action',auditActionLabel(item.action)],['Record ID',item.record_id],['Actor',currentUserId === item.actor_id ? `Current user · ${item.actor_id}` : item.actor_id],['Timestamp',formatAuditTimestamp(item.created_at,timeZone)]].map(([label,value]) => <div key={label} className="border-b py-3" style={{ borderColor: 'var(--c-border)' }}><p className="text-[10px] font-bold uppercase tracking-[.07em]" style={{ color: 'var(--c-subtle)' }}>{label}</p><p className="mt-1 break-all text-[12px] font-medium" style={{ color: 'var(--c-text)', fontFamily: label.includes('ID') || label === 'Actor' ? 'var(--font-data)' : 'var(--font-ui)' }}>{value}</p></div>)}
+      <h3 className="mb-1 mt-6 text-[10px] font-bold uppercase tracking-[.08em]" style={{ color: 'var(--c-subtle)' }}>Persisted detail</h3>{fields.length ? fields.map(field => <div key={field.key} className="border-b py-3" style={{ borderColor: 'var(--c-border)' }}><p className="text-[10px] font-bold uppercase tracking-[.07em]" style={{ color: 'var(--c-subtle)' }}>{field.label}</p><p className="mt-1 break-words text-[12px] leading-5" style={{ color: 'var(--c-text)' }}>{field.value}</p></div>) : <p className="py-3 text-[12px] italic" style={{ color: 'var(--c-muted)' }}>No simple detail fields were persisted for this record.</p>}
     </div>
-  )
+  </aside></>
 }
 
-// ── Detail drawer ─────────────────────────────────────────────────────────────
+function ConnectedAuditLog() {
+  const access = useConnectedProject()
+  const project = access.project!
+  const { workspace, loading, error, refresh } = useConnectedWorkspace(project.id)
+  const [search, setSearch] = useState('')
+  const [action, setAction] = useState<AuditItem['action'] | ''>('')
+  const [actor, setActor] = useState('')
+  const [date, setDate] = useState('')
+  const [selected, setSelected] = useState<AuditItem | null>(null)
+  const scoped = useMemo(() => projectAudit(project.id, workspace?.audit ?? []), [project.id, workspace])
+  const actors = useMemo(() => [...new Set(scoped.map(item => item.actor_id))].sort(), [scoped])
+  const filtered = useMemo(() => filterAudit(scoped, search, action, date).filter(item => !actor || item.actor_id === actor), [scoped, search, action, date, actor])
+  const captured = scoped.filter(item => item.action === 'event_captured').length
+  const verified = scoped.filter(item => item.action === 'actual_verified').length
 
-function DetailDrawer({ record, onClose }: { record: AuditRecord; onClose: () => void }) {
-  function Row({ label, value }: { label: string; value?: string }) {
-    if (!value) return null
-    return (
-      <div className="py-2.5" style={{ borderBottom: '1px solid var(--c-border)' }}>
-        <div className="text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>{label}</div>
-        <div className="mt-0.5 text-[13px]" style={{ color: 'var(--c-text)' }}>{value}</div>
-      </div>
-    )
-  }
-
-  return (
-    <div
-      style={{
-        position: 'fixed', right: 0, top: 0, bottom: 0, width: 380, zIndex: 100,
-        background: 'var(--c-card)', borderLeft: '1px solid var(--c-border)',
-        boxShadow: '-8px 0 32px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column',
-      }}
-    >
-      <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid var(--c-border)' }}>
-        <div>
-          <div className="text-[15px] font-semibold" style={{ color: 'var(--c-text)' }}>{record.action}</div>
-          <div className="mt-0.5 text-[11px]" style={{ color: 'var(--c-muted)' }}>{record.timestamp}</div>
-        </div>
-        <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-[8px]" style={{ color: 'var(--c-muted)' }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-border)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-        >
-          <X size={14} strokeWidth={2} />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-auto p-5">
-        {/* Immutability notice */}
-        <div className="mb-4 flex items-start gap-2 rounded-[10px] px-3 py-2.5" style={{ background: 'rgba(100,116,139,0.08)', border: '1px solid var(--c-border)' }}>
-          <Shield size={13} strokeWidth={2} style={{ color: '#64748B', flexShrink: 0, marginTop: 1 }} />
-          <p className="text-[11px]" style={{ color: 'var(--c-muted)' }}>
-            Audit records are read-only. No edit, delete, or silent history rewriting is permitted.
-          </p>
-        </div>
-
-        <Row label="Action" value={record.action} />
-        <Row label="Actor" value={record.actor} />
-        <Row label="Timestamp" value={record.timestamp} />
-        <Row label="Entity" value={record.entity} />
-        <Row label="Source" value={record.source} />
-        <Row label="Old Value" value={record.oldValue} />
-        <Row label="New Value" value={record.newValue} />
-        <Row label="Result" value={record.result} />
-        <Row label="Decision Context" value={record.decisionContext} />
-        <Row label="Related Evidence" value={record.relatedEvidence} />
-        <Row label="Related Actual" value={record.relatedActual} />
-        <Row label="Related Schedule Activity" value={record.relatedScheduleActivity} />
-
-        {record.matchConfidence && (
-          <div className="py-2.5" style={{ borderBottom: '1px solid var(--c-border)' }}>
-            <div className="text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>Match Confidence</div>
-            <div className="mt-0.5 text-[13px]" style={{ color: '#7C3AED' }}>{record.matchConfidence}</div>
-            <p className="mt-0.5 text-[10px]" style={{ color: 'var(--c-subtle)' }}>Confidence is not approval. Human verification is required.</p>
-          </div>
-        )}
-
-        {record.matchingSignals && record.matchingSignals.length > 0 && (
-          <div className="py-2.5" style={{ borderBottom: '1px solid var(--c-border)' }}>
-            <div className="mb-1 text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>Matching Signals</div>
-            <div className="flex flex-wrap gap-1.5">
-              {record.matchingSignals.map((s) => (
-                <span key={s} className="rounded-[5px] px-2 py-0.5 text-[11px]" style={{ background: 'var(--c-brand-tint)', color: '#F46F29' }}>{s}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  return <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <header className="shrink-0 border-b px-7 pb-4 pt-5" style={{ background: 'var(--c-page)', borderColor: 'var(--c-border)' }}><div className="flex items-start justify-between gap-4"><div><p className="text-[11px] font-bold uppercase tracking-[.08em]" style={{ color: '#F46F29' }}>{project.name}</p><h1 className="text-[22px] font-bold" style={{ color: 'var(--c-text)' }}>Recent Audit History</h1><p className="text-[13px]" style={{ color: 'var(--c-muted)' }}>Persisted field captures and human verification actions for this project.</p></div><button onClick={() => void refresh()} aria-label="Refresh audit history" className="flex h-9 items-center gap-2 rounded-[9px] px-3 text-[12px] font-semibold" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-muted)' }}><RefreshCw size={13} />Refresh</button></div>
+      {!loading && !error && workspace && <div className="mt-4 flex flex-wrap items-center gap-5 text-[12px]" style={{ color: 'var(--c-muted)' }}><span><strong className="mr-1 text-[16px]" style={{ color: 'var(--c-text)' }}>{scoped.length}</strong>returned records</span><span><strong className="mr-1 text-[16px]" style={{ color: 'var(--c-text)' }}>{captured}</strong>field captures</span><span><strong className="mr-1 text-[16px]" style={{ color: 'var(--c-text)' }}>{verified}</strong>human verifications</span><span className="ml-auto">Current API window · newest records first</span></div>}
+      <div className="mt-4 flex flex-wrap gap-2"><div className="relative"><Search size={13} className="absolute left-3 top-2.5" color="var(--c-muted)" /><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search IDs, actors or details" className="h-8 w-60 rounded-[8px] pl-8 pr-3 text-[12px] outline-none" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }} /></div><FilterSelect label="All actions" value={action} onChange={value => setAction(value as AuditItem['action'] | '')} options={[{value:'event_captured',label:'Field Event Captured'},{value:'actual_verified',label:'Actual Verified'}]} /><FilterSelect label="All actors" value={actor} onChange={setActor} options={actors.map(value => ({value,label:value}))} /><input type="date" aria-label="Filter by date" value={date} onChange={event => setDate(event.target.value)} className="h-8 rounded-[8px] px-3 text-[12px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-muted)' }} />{(search || action || actor || date) && <button onClick={() => { setSearch(''); setAction(''); setActor(''); setDate('') }} className="h-8 rounded-[8px] px-3 text-[12px] font-semibold" style={{ color: '#F46F29' }}>Clear filters</button>}</div>
+    </header>
+    {loading && <div className="p-12 text-center text-[13px]" style={{ color: 'var(--c-muted)' }}>Loading connected audit history…</div>}
+    {!loading && error && <div role="alert" className="m-7 rounded-[12px] p-5 text-[13px]" style={{ background: '#FEF2F2', color: '#B91C1C' }}>{error}<button onClick={() => void refresh()} className="ml-3 font-bold underline">Retry</button></div>}
+    {!loading && !error && workspace && <div className="min-h-0 flex-1 overflow-auto"><table className="w-full text-left" style={{ minWidth: 1040, borderCollapse: 'collapse' }}><thead className="sticky top-0 z-10" style={{ background: 'var(--c-page)' }}><tr>{['Timestamp','Action','Record ID','Actor ID','Persisted detail'].map(label => <th key={label} className="border-b px-5 py-3 text-[10px] font-bold uppercase tracking-[.08em]" style={{ borderColor: 'var(--c-border)', color: 'var(--c-subtle)' }}>{label}</th>)}</tr></thead><tbody>{filtered.map(item => <tr key={item.id} onClick={() => setSelected(item)} tabIndex={0} role="button" onKeyDown={event => { if (event.key === 'Enter') setSelected(item) }} className="cursor-pointer border-b" style={{ borderColor: 'var(--c-border)' }}><td className="px-5 py-4 text-[12px]" style={{ color: 'var(--c-muted)', whiteSpace: 'nowrap' }}>{formatAuditTimestamp(item.created_at, project.timezone)}</td><td className="px-5 py-4"><span className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[11px] font-bold" style={{ color: item.action === 'actual_verified' ? '#15803D' : '#C2410C', background: item.action === 'actual_verified' ? 'rgba(22,163,74,.10)' : 'rgba(244,111,41,.11)' }}>{item.action === 'actual_verified' && <CheckCircle2 size={11} />}{auditActionLabel(item.action)}</span></td><td className="px-5 py-4 text-[11px]" style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}>{item.record_id}</td><td className="px-5 py-4 text-[11px]" style={{ color: 'var(--c-muted)', fontFamily: 'var(--font-data)' }}>{access.identity?.user.id === item.actor_id ? <><strong style={{ color: 'var(--c-text)' }}>Current user</strong><br />{item.actor_id}</> : item.actor_id}</td><td className="px-5 py-4 text-[11px]" style={{ color: 'var(--c-muted)' }}>{auditDetailFields(item.detail).slice(0,2).map(field => `${field.label}: ${field.value}`).join(' · ') || 'No simple detail fields'}</td></tr>)}</tbody></table>{!filtered.length && <div className="p-12 text-center"><h2 className="text-[16px] font-bold" style={{ color: 'var(--c-text)' }}>{scoped.length ? 'No audit records match these filters' : 'No persisted audit records'}</h2><p className="mt-1 text-[13px]" style={{ color: 'var(--c-muted)' }}>{scoped.length ? 'Clear the filters to see the returned history.' : 'This project has no audit records in the current API window.'}</p></div>}</div>}
+    {selected && <AuditDetailDrawer item={selected} projectName={project.name} currentUserId={access.identity?.user.id} timeZone={project.timezone} onClose={() => setSelected(null)} />}
+  </div>
 }
-
-// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function AuditLogPage() {
-  const [search, setSearch] = useState('')
-  const [filterActor, setFilterActor] = useState('')
-  const [filterAction, setFilterAction] = useState('')
-  const [filterEntity, setFilterEntity] = useState('')
-  const [filterDate, setFilterDate] = useState('')
-  const [filterSource, setFilterSource] = useState('')
-  const [selectedRecord, setSelectedRecord] = useState<AuditRecord | null>(null)
-
-  const hasFilters = !!(search || filterActor || filterAction || filterEntity || filterDate || filterSource)
-
-  const actors = [...new Set(AUDIT_RECORDS.map((r) => r.actor))]
-  const actions = [...new Set(AUDIT_RECORDS.map((r) => ACTION_TYPE_LABELS[r.actionType]))]
-  const entityTypes = [...new Set(AUDIT_RECORDS.map((r) => r.entityType))]
-  const dates = [...new Set(AUDIT_RECORDS.map((r) => r.timestamp.split(' · ')[0]))]
-  const sources = [...new Set(AUDIT_RECORDS.map((r) => r.source))]
-
-  const filtered = useMemo(() => {
-    let rows = [...AUDIT_RECORDS]
-    if (search) {
-      const q = search.toLowerCase()
-      rows = rows.filter((r) =>
-        r.action.toLowerCase().includes(q) ||
-        r.entity.toLowerCase().includes(q) ||
-        r.actor.toLowerCase().includes(q) ||
-        r.change.toLowerCase().includes(q)
-      )
-    }
-    if (filterActor) rows = rows.filter((r) => r.actor === filterActor)
-    if (filterAction) rows = rows.filter((r) => ACTION_TYPE_LABELS[r.actionType] === filterAction)
-    if (filterEntity) rows = rows.filter((r) => r.entityType === filterEntity)
-    if (filterDate) rows = rows.filter((r) => r.timestamp.startsWith(filterDate))
-    if (filterSource) rows = rows.filter((r) => r.source === filterSource)
-    return rows
-  }, [search, filterActor, filterAction, filterEntity, filterDate, filterSource])
-
-  const todayCount = 24
-  const humanDecisions = 8
-  const scheduleUpdates = 6
-  const systemActions = 10
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-      {/* Header */}
-      <div style={{ flexShrink: 0, padding: '22px 28px 0', background: 'var(--c-page)', borderBottom: '1px solid var(--c-border)' }}>
-        <div className="mb-4 flex items-start justify-between">
-          <div>
-            <h1 className="text-[22px] font-bold tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>Audit Log</h1>
-            <p className="mt-0.5 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-              Trace how field evidence became trusted schedule information.
-            </p>
-          </div>
-        </div>
-
-        {/* Data lineage trail */}
-        <div className="mb-4 flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: 'var(--c-muted)' }}>
-          {['SOURCE', 'ACTUAL EVENT', 'AI SUGGESTION', 'HUMAN DECISION', 'SCHEDULE UPDATE'].map((step, i) => (
-            <span key={step} className="flex items-center gap-1.5">
-              {i > 0 && <span style={{ color: 'var(--c-subtle)' }}>→</span>}
-              <span
-                className="rounded-[5px] px-2 py-0.5 font-semibold uppercase"
-                style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', letterSpacing: '0.06em', fontSize: 10 }}
-              >
-                {step}
-              </span>
-            </span>
-          ))}
-        </div>
-
-        {/* Compact metrics */}
-        <div className="mb-0 flex flex-wrap items-center gap-x-5 gap-y-1 pb-4">
-          {[
-            { label: 'Events Today', value: todayCount },
-            { label: 'Human Decisions', value: humanDecisions },
-            { label: 'Schedule Updates', value: scheduleUpdates },
-            { label: 'System Actions', value: systemActions },
-          ].map((m, i) => (
-            <div key={m.label} className="flex items-center gap-2">
-              {i > 0 && <div className="h-3.5 w-px" style={{ background: 'var(--c-border)' }} />}
-              <span className="text-[15px] font-bold" style={{ color: 'var(--c-text)', fontFamily: 'var(--font-ui)' }}>{m.value}</span>
-              <span className="text-[12px]" style={{ color: 'var(--c-muted)' }}>{m.label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex flex-wrap items-center gap-2 py-3">
-          <div className="relative">
-            <Search size={13} strokeWidth={2} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--c-muted)' }} />
-            <input
-              type="search"
-              placeholder="Search audit events..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-8 rounded-[8px] pl-8 pr-3 text-[12px]"
-              style={{ width: 220, background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none', fontFamily: 'var(--font-ui)' }}
-            />
-          </div>
-          <FilterSelect label="Actor" value={filterActor} options={actors} onChange={setFilterActor} />
-          <FilterSelect label="Action Type" value={filterAction} options={actions} onChange={setFilterAction} />
-          <FilterSelect label="Entity Type" value={filterEntity} options={entityTypes} onChange={setFilterEntity} />
-          <FilterSelect label="Date" value={filterDate} options={dates} onChange={setFilterDate} />
-          <FilterSelect label="Source" value={filterSource} options={sources} onChange={setFilterSource} />
-          {hasFilters && (
-            <button
-              onClick={() => { setSearch(''); setFilterActor(''); setFilterAction(''); setFilterEntity(''); setFilterDate(''); setFilterSource('') }}
-              className="flex h-8 items-center gap-1.5 rounded-[8px] px-3 text-[12px] font-medium"
-              style={{ color: 'var(--c-muted)', border: '1px solid var(--c-border)', background: 'var(--c-card)' }}
-            >
-              <X size={11} strokeWidth={2.5} />
-              Clear Filters
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Table */}
-      <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-        {filtered.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <p className="text-[14px] font-medium" style={{ color: 'var(--c-muted)' }}>No audit events match these filters.</p>
-            <button onClick={() => { setSearch(''); setFilterActor(''); setFilterAction(''); setFilterEntity(''); setFilterDate(''); setFilterSource('') }}
-              className="text-[13px] hover:underline" style={{ color: '#F46F29' }}>Clear Filters</button>
-          </div>
-        ) : (
-          <table className="w-full text-left" style={{ borderCollapse: 'collapse', minWidth: 860 }}>
-            <thead>
-              <tr style={{ position: 'sticky', top: 0, zIndex: 5, background: 'var(--c-page)', borderBottom: '1px solid var(--c-border)' }}>
-                {['TIME', 'ACTION', 'ENTITY', 'ACTOR', 'SOURCE', 'CHANGE', 'RESULT'].map((col) => (
-                  <th key={col} className="px-4 py-3 text-[10px] font-bold uppercase text-left" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr
-                  key={r.id}
-                  onClick={() => setSelectedRecord(r === selectedRecord ? null : r)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && setSelectedRecord(r === selectedRecord ? null : r)}
-                  className="cursor-pointer"
-                  style={{
-                    borderBottom: '1px solid var(--c-border)',
-                    background: selectedRecord?.id === r.id ? 'var(--c-brand-tint)' : 'transparent',
-                  }}
-                  onMouseEnter={(e) => { if (selectedRecord?.id !== r.id) (e.currentTarget as HTMLElement).style.background = 'var(--c-brand-tint)' }}
-                  onMouseLeave={(e) => { if (selectedRecord?.id !== r.id) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
-                >
-                  <td className="px-4 py-3 text-[11px]" style={{ color: 'var(--c-muted)', whiteSpace: 'nowrap', fontFamily: 'var(--font-data)' }}>{r.timestamp}</td>
-                  <td className="px-4 py-3 text-[12px] font-medium" style={{ color: 'var(--c-text)', whiteSpace: 'nowrap' }}>{r.action}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}>{r.entity}</td>
-                  <td className="px-4 py-3">
-                    <div className="text-[12px]" style={{ color: r.actorType === 'system' ? 'var(--c-muted)' : 'var(--c-text)', whiteSpace: 'nowrap' }}>{r.actor}</div>
-                    {r.actorType === 'system' && <div className="text-[10px]" style={{ color: 'var(--c-subtle)' }}>System</div>}
-                  </td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: 'var(--c-muted)', whiteSpace: 'nowrap' }}>{r.source}</td>
-                  <td className="px-4 py-3 text-[12px]" style={{ color: 'var(--c-text)', maxWidth: 180 }}>{r.change}</td>
-                  <td className="px-4 py-3"><ResultBadge result={r.result} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <div className="px-4 py-3 text-[11px]" style={{ color: 'var(--c-subtle)', borderTop: '1px solid var(--c-border)' }}>
-          {filtered.length} of {AUDIT_RECORDS.length} audit records shown{hasFilters && ' · filters active'} · Click a record to view detail
-        </div>
-      </div>
-
-      {selectedRecord && (
-        <DetailDrawer record={selectedRecord} onClose={() => setSelectedRecord(null)} />
-      )}
-    </div>
-  )
+  const access = useConnectedProject()
+  if (!canViewAudit(access.role)) return <div className="flex flex-1 items-center justify-center p-8"><section className="max-w-md rounded-[16px] p-7 text-center" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}><Shield size={24} className="mx-auto mb-3" color="#64748B" /><h1 className="text-[20px] font-bold" style={{ color: 'var(--c-text)' }}>Audit history is restricted</h1><p className="mt-2 text-[13px] leading-5" style={{ color: 'var(--c-muted)' }}>This project role cannot view audit records. Audit access is available to Planner, Project Controls, and Administrator memberships.</p></section></div>
+  return <ConnectedAuditLog />
 }
