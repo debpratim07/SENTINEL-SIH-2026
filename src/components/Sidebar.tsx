@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
-import { useRole } from '../context/RoleContext'
+import { useConnectedProject } from '../context/ConnectedProjectContext'
+import { shellNavVisible } from '../lib/connected-shell'
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -221,8 +222,8 @@ interface SidebarProps {
 
 export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, onCaptureProgress }: SidebarProps) {
   const [projectOpen, setProjectOpen] = useState(false)
-  const { canSeeNav, can } = useRole()
-  const showCapture = can('capture')
+  const access = useConnectedProject()
+  const showCapture = ['site-supervisor', 'discipline-engineer', 'planner', 'project-controls', 'administrator'].includes(access.role ?? '')
 
   return (
     <aside
@@ -264,7 +265,7 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
         }}
       >
         {collapsed ? (
-          <NavTooltip label="Infrastructure Expansion">
+          <NavTooltip label={access.project?.name ?? 'Project'}>
             <div className="flex justify-center">
               <div
                 className="flex h-9 w-9 items-center justify-center rounded-[10px]"
@@ -285,7 +286,8 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
             <button
               className="flex w-full items-center justify-between rounded-[8px] px-2 py-1.5 text-left transition-colors duration-150"
               onClick={() => setProjectOpen((o) => !o)}
-              aria-expanded={projectOpen}
+              aria-expanded={access.projects.length > 1 ? projectOpen : undefined}
+              disabled={access.projects.length <= 1}
               onMouseEnter={(e) =>
                 ((e.currentTarget as HTMLButtonElement).style.background = 'var(--c-border)')
               }
@@ -297,9 +299,9 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
                 className="text-[13px] font-medium leading-[18px]"
                 style={{ color: 'var(--c-text)' }}
               >
-                Infrastructure Expansion
+                {access.project?.name}
               </span>
-              <ChevronDown
+              {access.projects.length > 1 && <ChevronDown
                 size={13}
                 strokeWidth={2}
                 style={{
@@ -309,27 +311,17 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
                   flexShrink: 0,
                   marginLeft: 4,
                 }}
-              />
+              />}
             </button>
-            {projectOpen && (
-              <button
-                className="mt-0.5 flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left transition-colors duration-150"
-                onMouseEnter={(e) =>
-                  ((e.currentTarget as HTMLButtonElement).style.background = 'var(--c-border)')
-                }
-                onMouseLeave={(e) =>
-                  ((e.currentTarget as HTMLButtonElement).style.background = 'transparent')
-                }
-              >
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ background: 'var(--c-border-strong)' }}
-                />
-                <span className="text-[12px]" style={{ color: 'var(--c-muted)' }}>
-                  Project Alpha
-                </span>
+            {projectOpen && access.projects.length > 1 && access.projects.map(project => (
+              <button key={project.id} className="mt-0.5 flex w-full items-center gap-2 rounded-[8px] px-2 py-1.5 text-left transition-colors duration-150"
+                onClick={() => { access.selectProject(project.id); setProjectOpen(false) }}
+                aria-current={project.id === access.project?.id ? 'true' : undefined}
+                style={{ color: project.id === access.project?.id ? '#F46F29' : 'var(--c-muted)' }}>
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: project.id === access.project?.id ? '#F46F29' : 'var(--c-border-strong)' }} />
+                <span className="truncate text-[12px]">{project.name}</span>
               </button>
-            )}
+            ))}
           </div>
         )}
       </div>
@@ -348,7 +340,7 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
         }
       >
         {navGroups
-          .map((group) => ({ ...group, items: group.items.filter((item) => canSeeNav(item.id)) }))
+          .map((group) => ({ ...group, items: group.items.filter((item) => shellNavVisible(access.role, item.id)) }))
           .filter((group) => group.items.length > 0)
           .map((group, groupIdx) => (
           <div key={group.label} className="mb-1">

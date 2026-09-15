@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Search, Bell, Sun, Moon, BookOpen } from 'lucide-react'
-import { useRole } from '../context/RoleContext'
+import { useConnectedAuth } from '../context/ConnectedAuthContext'
+import { useConnectedProject } from '../context/ConnectedProjectContext'
+import { emailInitials, roleLabel } from '../lib/connected-shell'
 
 interface HeaderProps {
   dark: boolean
@@ -21,7 +23,10 @@ export default function Header({
   onOpenGuide,
   notificationCount,
 }: HeaderProps) {
-  const { user, isSimulatedRole } = useRole()
+  const auth = useConnectedAuth()
+  const access = useConnectedProject()
+  const email = access.identity?.user.email ?? auth.user?.email ?? ''
+  const currentRole = roleLabel(access.role)
 
   return (
     <header
@@ -89,7 +94,7 @@ export default function Header({
             style={{ color: 'var(--c-muted)' }}
             onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--c-border)')}
             onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'transparent')}
-            aria-label={`Notifications${notificationCount > 0 ? `, ${notificationCount} unread` : ''}`}
+            aria-label={`Sample notifications${notificationCount > 0 ? `, ${notificationCount} unread` : ''}`}
           >
             <Bell size={17} strokeWidth={1.8} />
             {notificationCount > 0 && (
@@ -126,7 +131,7 @@ export default function Header({
           className="flex h-9 items-center gap-2.5 rounded-[10px] pl-1 pr-3 transition-all duration-150"
           onMouseEnter={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'var(--c-border)')}
           onMouseLeave={(e) => ((e.currentTarget as HTMLButtonElement).style.background = 'transparent')}
-          aria-label={`User profile: ${user.name}, ${user.roleLabel}`}
+          aria-label={`User profile: ${email}, ${currentRole}`}
           aria-haspopup="menu"
         >
           <div
@@ -134,13 +139,11 @@ export default function Header({
             style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)' }}
             aria-hidden="true"
           >
-            {user.initials}
+            {emailInitials(email)}
           </div>
           <div className="hidden flex-col items-start sm:flex">
-            <span className="text-[13px] font-medium leading-[17px]" style={{ color: 'var(--c-text)' }}>{user.name}</span>
-            <span className="text-[11px] leading-[14px]" style={{ color: isSimulatedRole ? '#F46F29' : 'var(--c-muted)' }}>
-              {user.roleLabel}{isSimulatedRole ? ' · Demo role' : ''}
-            </span>
+            <span className="text-[13px] font-medium leading-[17px]" style={{ color: 'var(--c-text)' }}>{email}</span>
+            <span className="text-[11px] leading-[14px]" style={{ color: 'var(--c-muted)' }}>{currentRole}</span>
           </div>
         </button>
       </div>

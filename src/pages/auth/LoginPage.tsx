@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
+import { useConnectedAuth } from '../../context/ConnectedAuthContext'
 
 interface Props {
-  onLogin: () => void
+  initialError?: string
 }
 
 function SentinelFullLogo() {
@@ -36,20 +37,16 @@ function SentinelFullLogo() {
 
 type LoginView = 'login' | 'forgot'
 
-export default function LoginPage({ onLogin }: Props) {
+export default function LoginPage({ initialError = '' }: Props) {
+  const auth = useConnectedAuth()
   const [view, setView] = useState<LoginView>('login')
-  const [email, setEmail] = useState('arjun.mehta@sentinel.demo')
-  const [password, setPassword] = useState('sentinel123')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-  const [forgotEmail, setForgotEmail] = useState('')
-  const [forgotSent, setForgotSent] = useState(false)
+  const [error, setError] = useState(initialError)
 
-  const DEMO_EMAIL = 'arjun.mehta@sentinel.demo'
-
-  function handleSignIn(e: React.FormEvent) {
+  async function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     if (!email || !password) {
@@ -57,19 +54,14 @@ export default function LoginPage({ onLogin }: Props) {
       return
     }
     setLoading(true)
-    setTimeout(() => {
-      if (email === DEMO_EMAIL) {
-        onLogin()
-      } else {
-        setLoading(false)
-        setError('Invalid credentials. Use arjun.mehta@sentinel.demo / sentinel123 for the demo.')
-      }
-    }, 900)
-  }
-
-  function handleForgot(e: React.FormEvent) {
-    e.preventDefault()
-    setForgotSent(true)
+    try {
+      if (!auth.configured) throw new Error('The project connection is not configured. Contact your project administrator.')
+      await auth.signIn(email.trim(), password)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to sign in. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const fieldStyle = {
@@ -140,7 +132,7 @@ export default function LoginPage({ onLogin }: Props) {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError('') }}
-                  placeholder="arjun.mehta@sentinel.demo"
+                  placeholder="your@email.com"
                   style={fieldStyle}
                   onFocus={(e) => { e.target.style.borderColor = 'rgba(244,111,41,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(244,111,41,0.08)' }}
                   onBlur={(e) => { e.target.style.borderColor = 'var(--c-border)'; e.target.style.boxShadow = 'none' }}
@@ -196,23 +188,9 @@ export default function LoginPage({ onLogin }: Props) {
                 </div>
               )}
 
-              <div className="mb-5 flex items-center gap-2">
-                <input
-                  id="remember-me"
-                  type="checkbox"
-                  checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
-                  className="h-4 w-4 rounded"
-                  style={{ accentColor: '#F46F29' }}
-                />
-                <label htmlFor="remember-me" className="text-[13px]" style={{ color: 'var(--c-muted)' }}>
-                  Remember me
-                </label>
-              </div>
-
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || !auth.configured}
                 className="w-full rounded-[10px] py-3 text-[14px] font-semibold text-white transition-all duration-150 hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
                 style={{
                   background: loading ? '#F46F29' : 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)',
@@ -235,36 +213,11 @@ export default function LoginPage({ onLogin }: Props) {
             </form>
 
             <p className="mt-5 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Prototype preview · sample data
+              Sign in with your SENTINEL project account. Inner pages currently show sample data.
             </p>
             <a href="/workspace" className="mt-3 block text-center text-[12px] font-semibold" style={{ color: '#F46F29' }}>
               Open connected workspace
             </a>
-          </div>
-        ) : forgotSent ? (
-          <div
-            className="rounded-[18px] p-8 text-center"
-            style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 40px rgba(0,0,0,0.10)' }}
-          >
-            <div
-              className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full"
-              style={{ background: 'rgba(244,111,41,0.10)' }}
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#F46F29" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6L9 17l-5-5" />
-              </svg>
-            </div>
-            <h2 className="mb-2 text-[18px] font-bold" style={{ color: 'var(--c-text)' }}>Check your email</h2>
-            <p className="mb-6 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-              If {forgotEmail} has a SENTINEL account, a reset link will be sent. This is a prototype — no real email is delivered.
-            </p>
-            <button
-              onClick={() => { setView('login'); setForgotSent(false); setForgotEmail('') }}
-              className="text-[13px] font-medium hover:underline"
-              style={{ color: '#F46F29' }}
-            >
-              Back to Sign In
-            </button>
           </div>
         ) : (
           <div
@@ -280,36 +233,10 @@ export default function LoginPage({ onLogin }: Props) {
               Back to Sign In
             </button>
             <h1 className="mb-1.5 text-[20px] font-bold tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>
-              Reset your password
+              Password help
             </h1>
             <p className="mb-6 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-              Enter your email address and we'll send a reset link.
-            </p>
-            <form onSubmit={handleForgot} noValidate>
-              <div className="mb-5">
-                <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={forgotEmail}
-                  onChange={(e) => setForgotEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  style={fieldStyle}
-                  onFocus={(e) => { e.target.style.borderColor = 'rgba(244,111,41,0.45)'; e.target.style.boxShadow = '0 0 0 3px rgba(244,111,41,0.08)' }}
-                  onBlur={(e) => { e.target.style.borderColor = 'var(--c-border)'; e.target.style.boxShadow = 'none' }}
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full rounded-[10px] py-3 text-[14px] font-semibold text-white transition-all hover:opacity-90"
-                style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)', boxShadow: '0 2px 10px rgba(244,111,41,0.26)' }}
-              >
-                Send Reset Link
-              </button>
-            </form>
-            <p className="mt-4 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Prototype — no real email is delivered
+              Password recovery is not available in SENTINEL yet. Contact your project administrator for account help.
             </p>
           </div>
         )}

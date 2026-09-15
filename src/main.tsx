@@ -14,12 +14,12 @@ if (callback.pathname !== window.location.pathname) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    {callback.pathname === '/workspace' ? (
-      <ConnectedAuthProvider>
-        <ConnectedProjectProvider>
-          <ConnectedWorkspace authError={callback.error} />
-        </ConnectedProjectProvider>
-      </ConnectedAuthProvider>
-    ) : <App />}
+    <ConnectedAuthProvider>
+      <ConnectedProjectProvider>
+        {callback.pathname === '/workspace'
+          ? <ConnectedWorkspace authError={callback.error} />
+          : <App authError={callback.error} />}
+      </ConnectedProjectProvider>
+    </ConnectedAuthProvider>
   </React.StrictMode>,
 )

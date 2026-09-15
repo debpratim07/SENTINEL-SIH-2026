@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { RoleProvider } from './context/RoleContext'
+import { useConnectedAuth } from './context/ConnectedAuthContext'
+import { useConnectedProject } from './context/ConnectedProjectContext'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import Dashboard from './components/dashboard/Dashboard'
@@ -31,8 +33,9 @@ const OVERFLOW_HIDDEN_ROUTES = new Set([
 ])
 
 function AppShell() {
-  const [loggedIn, setLoggedIn] = useState(false)
+  const auth = useConnectedAuth()
   const [dark, setDark] = useState(false)
+  const [shellError, setShellError] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [activeNav, setActiveNav] = useState('dashboard')
 
@@ -41,7 +44,6 @@ function AppShell() {
   const [notificationsOpen, setNotificationsOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
-  const [notifCount, setNotifCount] = useState(3)
 
   // Capture drawers
   const [captureChooserOpen, setCaptureChooserOpen] = useState(false)
@@ -96,7 +98,7 @@ function AppShell() {
   function handleProfileNavigate(nav: string) {
     setProfileOpen(false)
     if (nav === '__logout') {
-      setLoggedIn(false)
+      void auth.signOut().catch(cause => setShellError(cause instanceof Error ? cause.message : 'Unable to sign out.'))
       return
     }
     handleNavChange(nav)
@@ -137,20 +139,17 @@ function AppShell() {
     'performance','data-quality','exec-knowledge','audit-log','admin','profile',
   ])
 
-  if (!loggedIn) {
-    return <LoginPage onLogin={() => setLoggedIn(true)} />
-  }
-
   if (activeNav === 'profile') {
     return (
       <div className="flex h-screen overflow-hidden" style={{ background: 'var(--c-page)' }}>
         <Sidebar collapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed((c) => !c)}
           activeNav={activeNav} onNavChange={handleNavChange} onCaptureProgress={() => setCaptureChooserOpen(true)} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {shellError && <p role="alert" className="px-6 py-2 text-[13px] text-red-600">{shellError}</p>}
           <Header dark={dark} onToggleDark={() => setDark((d) => !d)}
             onOpenSearch={() => setSearchOpen(true)} onOpenNotifications={() => setNotificationsOpen((v) => !v)}
             onOpenProfile={() => setProfileOpen((v) => !v)} onOpenGuide={() => setGuideOpen((v) => !v)}
-            notificationCount={notifCount} />
+            notificationCount={0} />
           <ProfilePage onBack={() => handleNavChange('dashboard')} dark={dark} onToggleDark={() => setDark((d) => !d)} />
         </div>
       </div>
@@ -168,6 +167,7 @@ function AppShell() {
       />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {shellError && <p role="alert" className="px-6 py-2 text-[13px] text-red-600">{shellError}</p>}
         <Header
           dark={dark}
           onToggleDark={() => setDark((d) => !d)}
@@ -175,8 +175,12 @@ function AppShell() {
           onOpenNotifications={() => setNotificationsOpen((v) => !v)}
           onOpenProfile={() => setProfileOpen((v) => !v)}
           onOpenGuide={() => setGuideOpen((v) => !v)}
-          notificationCount={notifCount}
+          notificationCount={0}
         />
+
+        <div role="note" className="shrink-0 px-7 py-2 text-[12px]" style={{ background: 'var(--c-brand-tint)', color: 'var(--c-text)', borderBottom: '1px solid var(--c-border)' }}>
+          Preview screens use sample data and local interactions. Real reports, review, schedule actuals and audit are in <a className="font-semibold underline" href="/workspace">Connected Workspace</a>.
+        </div>
 
         <main
           className="flex-1"
@@ -283,7 +287,7 @@ function AppShell() {
         open={notificationsOpen}
         onClose={() => setNotificationsOpen(false)}
         onNavigate={(nav, id) => { setNotificationsOpen(false); handleNavigateToRecord(nav, id) }}
-        onCountChange={setNotifCount}
+        onCountChange={() => {}}
       />
 
       <ProfileDropdown
@@ -304,10 +308,27 @@ function AppShell() {
   )
 }
 
-export default function App() {
-  return (
-    <RoleProvider>
-      <AppShell />
-    </RoleProvider>
-  )
+export default function App({ authError = '' }: { authError?: string }) {
+  const auth = useConnectedAuth()
+  const access = useConnectedProject()
+
+  if (auth.loading) return <main className="flex min-h-screen items-center justify-center" style={{ background: 'var(--c-page)', color: 'var(--c-text)' }}>Loading your session…</main>
+  if (!auth.session) return <LoginPage initialError={authError} />
+
+  if (access.loading && !access.identity) return <main className="flex min-h-screen items-center justify-center" style={{ background: 'var(--c-page)', color: 'var(--c-text)' }}>Loading project access…</main>
+
+  if (access.error || !access.project) return <main className="flex min-h-screen items-center justify-center px-6" style={{ background: 'var(--c-page)', color: 'var(--c-text)' }}>
+    <section className="w-full max-w-md rounded-[18px] p-8" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+      <p className="mb-2 text-[12px] font-semibold uppercase" style={{ color: '#F46F29' }}>SENTINEL · PROJECT ACCESS</p>
+      <h1 className="mb-2 text-[22px] font-bold">{access.error ? 'Unable to load project access' : 'Your account is ready'}</h1>
+      <p className="mb-2 text-[13px]" style={{ color: 'var(--c-muted)' }}>{access.error || 'A project administrator must assign your account to a project before you can use this workspace.'}</p>
+      <p className="mb-5 text-[12px]" style={{ color: 'var(--c-subtle)' }}>{access.identity?.user.email ?? auth.user?.email}</p>
+      <div className="flex gap-4 text-[13px] font-semibold">
+        <button onClick={() => void access.refresh()} style={{ color: '#F46F29' }}>Check access again</button>
+        <button onClick={() => void auth.signOut()} style={{ color: 'var(--c-muted)' }}>Sign out</button>
+      </div>
+    </section>
+  </main>
+
+  return <RoleProvider><AppShell key={`${auth.user?.id}:${access.project.id}`} /></RoleProvider>
 }
