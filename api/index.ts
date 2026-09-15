@@ -4,6 +4,16 @@ import { allowedOrigins } from '../server/deployment-config.ts'
 
 let connectedHandler: ReturnType<typeof createHandler> | null = null
 
+function restoreApiPath(req: IncomingMessage) {
+  const requestUrl = new URL(req.url ?? '/api', 'http://localhost')
+  const path = requestUrl.searchParams.get('__sentinel_path')
+  if (!path) return
+
+  requestUrl.searchParams.delete('__sentinel_path')
+  const query = requestUrl.searchParams.toString()
+  req.url = `/api/${path}${query ? `?${query}` : ''}`
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
   const url = process.env.VITE_SUPABASE_URL
   const key = process.env.VITE_SUPABASE_PUBLISHABLE_KEY
@@ -18,6 +28,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     return
   }
 
+  restoreApiPath(req)
   connectedHandler ??= createHandler({ url, key, origins: allowedOrigins() })
   await connectedHandler(req, res)
 }
