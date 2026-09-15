@@ -213,7 +213,7 @@ export default function LoginPage({ initialError = '' }: Props) {
             </form>
 
             <p className="mt-5 text-center text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-              Sign in with your SENTINEL project account. Inner pages currently show sample data.
+              Sign in with your SENTINEL project account. Manual capture is connected; other inner screens currently show sample data.
             </p>
             <a href="/workspace" className="mt-3 block text-center text-[12px] font-semibold" style={{ color: '#F46F29' }}>
               Open connected workspace

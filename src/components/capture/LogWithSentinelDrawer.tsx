@@ -1,863 +1,195 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, ClipboardCheck, Quote, ShieldCheck, X } from 'lucide-react'
+import { useConnectedProject } from '../../context/ConnectedProjectContext'
+import { captureManualEvent } from '../../lib/connected-api'
 import {
-  X,
-  Camera,
-  FileText,
-  StickyNote,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
-  Loader2,
-  Circle,
-} from 'lucide-react'
+  buildManualCaptureInput,
+  canCaptureProgress,
+  resolveCaptureRequest,
+  validateManualCapture,
+  type ManualCaptureDraft,
+  type PendingCaptureRequest,
+} from '../../lib/manual-capture'
+import type { ProposedEvent } from '../../lib/connected-types'
 import Drawer from '../ui/Drawer'
 
-type LogStep =
-  | 'input'
-  | 'processing'
-  | 'clarification'
-  | 'structured'
-  | 'match-processing'
-  | 'match-preview'
-  | 'success'
+interface Props { open: boolean; onClose: () => void }
 
-const AREA_OPTIONS = ['Utility Block', 'Area A', 'Area B', 'Tank Farm', "Other", "I don't know"]
-
-const ACTIVITIES = [
-  { id: 'EQUIP-ALIGN-P204', label: 'EQUIPMENT ALIGNMENT — P-204', tier: 'L6', discipline: 'Rotating Equipment', area: 'Utility Block' },
-  { id: 'P204-INSTALL', label: 'P-204 INSTALLATION', tier: 'L6', discipline: 'Rotating Equipment', area: 'Utility Block', confidence: 42 },
-  { id: 'P204-COMM', label: 'P-204 COMMISSIONING', tier: 'L6', discipline: 'Rotating Equipment', area: 'Utility Block', confidence: 21 },
-]
-
-function StepIcon({ done, active }: { done: boolean; active: boolean }) {
-  if (done) return <CheckCircle2 size={16} strokeWidth={2} style={{ color: '#16A34A' }} />
-  if (active) return <Loader2 size={16} strokeWidth={2} style={{ color: '#F46F29' }} className="animate-spin" />
-  return <Circle size={16} strokeWidth={1.5} style={{ color: 'var(--c-subtle)' }} />
+const emptyDraft: ManualCaptureDraft = {
+  report_date: '', text: '', event_type: 'progress_observation', actual_date: null, source_quote: '',
 }
 
-interface Props {
-  open: boolean
-  onClose: () => void
+const fieldStyle = {
+  width: '100%', borderRadius: 10, border: '1px solid var(--c-border)',
+  background: 'var(--c-page)', color: 'var(--c-text)', padding: '10px 12px',
+  fontSize: 13, outline: 'none',
+} as const
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <span className="mb-1.5 block text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>{children}</span>
 }
 
 export default function LogWithSentinelDrawer({ open, onClose }: Props) {
-  const [step, setStep] = useState<LogStep>('input')
-  const [inputText, setInputText] = useState('Pump P-204 alignment started this morning.')
-  const [selectedArea, setSelectedArea] = useState<string | null>(null)
-  const [processingStep, setProcessingStep] = useState(0)
-  const [matchStep, setMatchStep] = useState(0)
-  const [showAlternatives, setShowAlternatives] = useState(false)
-  const [editingField, setEditingField] = useState<string | null>(null)
+  const access = useConnectedProject()
+  const [draft, setDraft] = useState<ManualCaptureDraft>(emptyDraft)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [savedEventId, setSavedEventId] = useState<string | null>(null)
+  const rawTextRef = useRef<HTMLTextAreaElement>(null)
+  const pendingRequest = useRef<PendingCaptureRequest | null>(null)
+  const submissionActive = useRef(false)
 
-  // Reset state on open
   useEffect(() => {
-    if (open) {
-      setStep('input')
-      setInputText('Pump P-204 alignment started this morning.')
-      setSelectedArea(null)
-      setProcessingStep(0)
-      setMatchStep(0)
-      setShowAlternatives(false)
-      setEditingField(null)
-    }
+    if (!open) return
+    setDraft(emptyDraft); setBusy(false); setError(''); setSavedEventId(null)
+    pendingRequest.current = null; submissionActive.current = false
   }, [open])
 
-  // Processing animation
-  useEffect(() => {
-    if (step !== 'processing') return
-    setProcessingStep(0)
-    const t1 = setTimeout(() => setProcessingStep(1), 500)
-    const t2 = setTimeout(() => setProcessingStep(2), 1050)
-    const t3 = setTimeout(() => setProcessingStep(3), 1600)
-    const t4 = setTimeout(() => setProcessingStep(4), 2200)
-    const t5 = setTimeout(() => setStep('clarification'), 3100)
-    return () => [t1, t2, t3, t4, t5].forEach(clearTimeout)
-  }, [step])
+  const canCapture = canCaptureProgress(access.role)
 
-  // Match processing animation
-  useEffect(() => {
-    if (step !== 'match-processing') return
-    setMatchStep(0)
-    const t1 = setTimeout(() => setMatchStep(1), 450)
-    const t2 = setTimeout(() => setMatchStep(2), 950)
-    const t3 = setTimeout(() => setMatchStep(3), 1450)
-    const t4 = setTimeout(() => setMatchStep(4), 1950)
-    const t5 = setTimeout(() => setMatchStep(5), 2500)
-    const t6 = setTimeout(() => setStep('match-preview'), 3300)
-    return () => [t1, t2, t3, t4, t5, t6].forEach(clearTimeout)
-  }, [step])
-
-  function handleContinue() {
-    if (step === 'input') setStep('processing')
-    else if (step === 'clarification') setStep('structured')
-    else if (step === 'structured') setStep('match-processing')
-    else if (step === 'match-preview') setStep('success')
+  function update<K extends keyof ManualCaptureDraft>(key: K, value: ManualCaptureDraft[K]) {
+    setDraft(current => ({ ...current, [key]: value })); setError('')
   }
 
-  function handleBack() {
-    if (step === 'clarification') setStep('input')
-    else if (step === 'structured') setStep('clarification')
-    else if (step === 'match-preview') setStep('structured')
+  function useSelectedQuote() {
+    const input = rawTextRef.current
+    if (!input || input.selectionStart === input.selectionEnd) {
+      setError('Select the supporting words in the raw field update first.'); return
+    }
+    update('source_quote', draft.text.slice(input.selectionStart, input.selectionEnd))
   }
 
-  function handleDone() {
-    onClose()
+  function handleClose() { if (!busy) onClose() }
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (submissionActive.current || !access.project) return
+    if (!canCapture) { setError('Your current project role cannot capture progress.'); return }
+    const validationError = validateManualCapture(draft)
+    if (validationError) { setError(validationError); return }
+
+    pendingRequest.current = resolveCaptureRequest(pendingRequest.current, draft, () => crypto.randomUUID())
+    submissionActive.current = true; setBusy(true); setError('')
+    try {
+      const saved = await captureManualEvent(
+        access.project.id,
+        buildManualCaptureInput(draft, pendingRequest.current.key),
+      )
+      setSavedEventId(saved.id); pendingRequest.current = null
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to save this update. Please retry.')
+    } finally {
+      submissionActive.current = false; setBusy(false)
+    }
   }
 
-  const stepTitles: Record<LogStep, string> = {
-    input: 'Log Progress',
-    processing: 'Log Progress',
-    clarification: 'Log Progress',
-    structured: 'Log Progress',
-    'match-processing': 'Log Progress',
-    'match-preview': 'Log Progress',
-    success: 'Progress Submitted',
+  function captureAnother() {
+    setDraft(emptyDraft); setSavedEventId(null); setError(''); pendingRequest.current = null
   }
 
   return (
-    <Drawer open={open} onClose={onClose} width={620} aria-label="Log Progress">
-      {/* Header */}
-      <div
-        style={{
-          flexShrink: 0,
-          padding: '20px 24px 16px',
-          borderBottom: '1px solid var(--c-border)',
-        }}
-      >
-        <div className="flex items-start justify-between">
+    <Drawer open={open} onClose={handleClose} width={620} aria-label="Manual progress capture">
+      <div className="flex h-full flex-col">
+        <div className="flex shrink-0 items-start justify-between px-7 pb-5 pt-7" style={{ borderBottom: '1px solid var(--c-border)' }}>
           <div>
-            <h2
-              className="text-[18px] font-bold tracking-[-0.02em]"
-              style={{ color: 'var(--c-text)' }}
-            >
-              {stepTitles[step]}
+            <div className="mb-2 flex items-center gap-2">
+              <span className="rounded-full px-2 py-1 text-[10px] font-bold uppercase" style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', letterSpacing: '0.07em' }}>Connected</span>
+              <span className="text-[11px] font-medium" style={{ color: 'var(--c-muted)' }}>Manual capture</span>
+            </div>
+            <h2 className="text-[20px] font-bold tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>
+              {savedEventId ? 'Progress saved' : 'Log field progress'}
             </h2>
-            {step !== 'success' && (
-              <p className="mt-0.5 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-                {step === 'input' || step === 'processing' || step === 'clarification'
-                  ? 'Describe what happened on site. SENTINEL will structure the update and connect it to the schedule.'
-                  : step === 'structured'
-                  ? 'Review the structured actual before confirming.'
-                  : step === 'match-preview'
-                  ? 'SENTINEL has found a likely schedule match.'
-                  : 'Finding schedule activity...'}
-              </p>
-            )}
+            <p className="mt-1 text-[13px]" style={{ color: 'var(--c-muted)' }}>
+              {savedEventId ? 'The update is waiting for an authorized human review.' : 'Record the observation exactly as it was reported on site.'}
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-[8px] transition-colors duration-150"
-            style={{ color: 'var(--c-muted)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--c-border)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-            aria-label="Close"
-          >
+          <button onClick={handleClose} disabled={busy} className="flex h-8 w-8 items-center justify-center rounded-[8px]" aria-label="Close" style={{ color: 'var(--c-muted)' }}>
             <X size={16} strokeWidth={2} />
           </button>
         </div>
 
-        {/* Step dots */}
-        {step !== 'success' && (
-          <div className="mt-3 flex items-center gap-1.5">
-            {(['input', 'clarification', 'structured', 'match-preview'] as LogStep[]).map((s, i) => {
-              const stepOrder: LogStep[] = ['input', 'processing', 'clarification', 'structured', 'match-processing', 'match-preview', 'success']
-              const currentIdx = stepOrder.indexOf(step)
-              const thisIdx = stepOrder.indexOf(s)
-              const done = currentIdx > thisIdx
-              const active = currentIdx === thisIdx || (s === 'input' && step === 'processing') || (s === 'clarification' && step === 'clarification') || (s === 'structured' && step === 'structured') || (s === 'match-preview' && (step === 'match-processing' || step === 'match-preview'))
-              return (
-                <div
-                  key={i}
-                  style={{
-                    height: 3,
-                    width: active ? 24 : done ? 16 : 12,
-                    borderRadius: 2,
-                    background: done ? '#F46F29' : active ? '#F46F29' : 'var(--c-border)',
-                    opacity: done ? 0.7 : 1,
-                    transition: 'width 200ms, background 200ms',
-                  }}
-                />
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto" style={{ padding: '24px' }}>
-        {/* ── INPUT ────────────────────────────────────────────── */}
-        {step === 'input' && (
-          <div className="flex flex-col gap-5">
-            <div>
-              <label
-                htmlFor="log-input"
-                className="mb-2 block text-[13px] font-semibold"
-                style={{ color: 'var(--c-text)' }}
-              >
-                What happened on site?
-              </label>
-              <textarea
-                id="log-input"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder="Describe the activity, location, equipment and what changed..."
-                rows={5}
-                className="w-full resize-none rounded-[12px] p-4 text-[14px] leading-relaxed transition-colors duration-150"
-                style={{
-                  background: 'var(--c-page)',
-                  border: '1.5px solid var(--c-border)',
-                  color: 'var(--c-text)',
-                  outline: 'none',
-                  fontFamily: 'var(--font-ui)',
-                }}
-                onFocus={(e) => (e.target.style.borderColor = 'rgba(244,111,41,0.5)')}
-                onBlur={(e) => (e.target.style.borderColor = 'var(--c-border)')}
-              />
-            </div>
-
-            {/* Helper chips */}
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>
-                Quick context
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {['Activity started', 'Activity completed', 'Work on hold'].map((chip) => (
-                  <button
-                    key={chip}
-                    className="rounded-full px-3 py-1.5 text-[12px] font-medium transition-all duration-150"
-                    style={{
-                      background: 'var(--c-page)',
-                      border: '1px solid var(--c-border)',
-                      color: 'var(--c-muted)',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'rgba(244,111,41,0.4)'
-                      ;(e.currentTarget as HTMLElement).style.color = '#F46F29'
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--c-border)'
-                      ;(e.currentTarget as HTMLElement).style.color = 'var(--c-muted)'
-                    }}
-                    onClick={() => {
-                      const suffix = ` ${chip.toLowerCase()}.`
-                      if (!inputText.toLowerCase().includes(chip.toLowerCase())) {
-                        setInputText((t) => t.trimEnd() + suffix)
-                      }
-                    }}
-                  >
-                    {chip}
-                  </button>
-                ))}
+        <div className="flex-1 overflow-y-auto px-7 py-6">
+          {savedEventId ? (
+            <div className="flex min-h-full flex-col items-center justify-center py-10 text-center" aria-live="polite">
+              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: 'rgba(22,163,74,0.12)' }}>
+                <CheckCircle2 size={32} strokeWidth={1.8} style={{ color: '#16A34A' }} />
               </div>
-            </div>
-
-            {/* Add Evidence */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-3 text-[12px] font-semibold" style={{ color: 'var(--c-muted)', letterSpacing: '0.02em' }}>
-                Add Evidence <span style={{ color: 'var(--c-subtle)', fontWeight: 400 }}>— optional</span>
+              <h3 className="text-[22px] font-bold" style={{ color: 'var(--c-text)' }}>Saved to {access.project?.name}</h3>
+              <p className="mt-2 max-w-md text-[14px] leading-6" style={{ color: 'var(--c-muted)' }}>
+                SENTINEL created a proposed event and preserved your original field update and source quote.
               </p>
-              <div className="flex gap-2">
-                {[
-                  { icon: Camera, label: 'Photo' },
-                  { icon: FileText, label: 'Document' },
-                  { icon: StickyNote, label: 'Note' },
-                ].map(({ icon: Icon, label }) => (
-                  <button
-                    key={label}
-                    className="flex items-center gap-1.5 rounded-[8px] px-3 py-2 text-[12px] font-medium transition-colors duration-150"
-                    style={{
-                      background: 'var(--c-card)',
-                      border: '1px solid var(--c-border)',
-                      color: 'var(--c-muted)',
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--c-border-strong)'
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.borderColor = 'var(--c-border)'
-                    }}
-                  >
-                    <Icon size={13} strokeWidth={2} />
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── PROCESSING ───────────────────────────────────────── */}
-        {step === 'processing' && (
-          <div className="flex flex-col gap-5">
-            {/* Original statement */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-2 text-[10px] font-semibold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-                Your update
-              </p>
-              <p className="text-[14px] italic leading-relaxed" style={{ color: 'var(--c-text)' }}>
-                "{inputText}"
-              </p>
-            </div>
-
-            {/* Processing steps */}
-            <div>
-              <p className="mb-4 text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>
-                Understanding update
-              </p>
-              <div className="flex flex-col gap-3">
-                {[
-                  'Activity identified',
-                  'Event identified',
-                  'Equipment identified',
-                  'Checking project context',
-                ].map((label, i) => {
-                  const done = processingStep > i + 1
-                  const active = processingStep === i + 1
-                  return (
-                    <div
-                      key={label}
-                      className="flex items-center gap-3"
-                      style={{
-                        opacity: processingStep >= i + 1 ? 1 : 0.35,
-                        transition: 'opacity 300ms',
-                      }}
-                    >
-                      <StepIcon done={done} active={active} />
-                      <span
-                        className="text-[14px]"
-                        style={{
-                          color: done ? 'var(--c-text)' : active ? 'var(--c-text)' : 'var(--c-muted)',
-                          fontWeight: active ? 500 : 400,
-                        }}
-                      >
-                        {done ? <span style={{ color: '#16A34A' }}>✓</span> : active ? '→ '  : ''}{label}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── CLARIFICATION ────────────────────────────────────── */}
-        {step === 'clarification' && (
-          <div className="flex flex-col gap-5">
-            {/* Original */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-1.5 text-[10px] font-semibold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-                Your update
-              </p>
-              <p className="text-[13px] italic" style={{ color: 'var(--c-muted)' }}>"{inputText}"</p>
-            </div>
-
-            {/* Detected */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-3 text-[11px] font-semibold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>
-                Detected
-              </p>
-              <div className="flex flex-col gap-2">
-                {[
-                  { label: 'Activity', value: 'Pump P-204 alignment' },
-                  { label: 'Event', value: 'Actual Start' },
-                  { label: 'Equipment', value: 'P-204' },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex items-center gap-3">
-                    <span className="w-20 text-[12px]" style={{ color: 'var(--c-muted)' }}>{label}</span>
-                    <span className="flex items-center gap-1.5 text-[13px] font-medium" style={{ color: 'var(--c-text)' }}>
-                      <Check size={12} strokeWidth={2.5} style={{ color: '#16A34A' }} />
-                      {value}
-                    </span>
+              <div className="mt-6 w-full max-w-md rounded-[14px] p-5 text-left" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}>
+                <div className="flex items-start gap-3">
+                  <ClipboardCheck size={18} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} />
+                  <div>
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--c-text)' }}>Pending human review</p>
+                    <p className="mt-1 text-[12px] leading-5" style={{ color: 'var(--c-muted)' }}>The schedule has not been updated. No AI extraction or activity matching has occurred.</p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Question */}
-            <div>
-              <p className="mb-3 text-[15px] font-semibold" style={{ color: 'var(--c-text)' }}>
-                Which project area did this occur in?
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {AREA_OPTIONS.map((area) => {
-                  const selected = selectedArea === area
-                  return (
-                    <button
-                      key={area}
-                      onClick={() => setSelectedArea(area === selectedArea ? null : area)}
-                      className="rounded-[10px] px-4 py-2.5 text-[13px] font-medium transition-all duration-150"
-                      style={{
-                        background: selected ? 'rgba(244,111,41,0.12)' : 'var(--c-page)',
-                        border: selected ? '1.5px solid rgba(244,111,41,0.45)' : '1.5px solid var(--c-border)',
-                        color: selected ? '#F46F29' : 'var(--c-text)',
-                      }}
-                    >
-                      {area}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {selectedArea === "I don't know" && (
-                <div
-                  className="mt-4 rounded-[10px] p-3.5"
-                  style={{ background: 'rgba(244,111,41,0.06)', border: '1px solid rgba(244,111,41,0.2)' }}
-                >
-                  <p className="text-[13px]" style={{ color: 'var(--c-text)' }}>
-                    <span style={{ fontWeight: 600 }}>That's okay.</span> The update can still be recorded and may require planner review before it affects the schedule.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── STRUCTURED ACTUAL PREVIEW ─────────────────────────── */}
-        {step === 'structured' && (
-          <div className="flex flex-col gap-5">
-            {/* Actual Event */}
-            <div
-              className="rounded-[14px] overflow-hidden"
-              style={{ border: '1px solid var(--c-border)' }}
-            >
-              <div
-                className="px-4 py-3"
-                style={{ background: 'var(--c-page)', borderBottom: '1px solid var(--c-border)' }}
-              >
-                <p className="text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-                  Actual Event
-                </p>
-              </div>
-              <div className="divide-y" style={{ borderColor: 'var(--c-border)' }}>
-                {[
-                  { label: 'Activity', value: 'Pump P-204 alignment', inferred: false },
-                  { label: 'Event', value: 'Actual Start', inferred: false },
-                  { label: 'Discipline', value: 'Rotating Equipment', inferred: true },
-                  { label: 'Area', value: selectedArea && selectedArea !== "I don't know" ? selectedArea : 'Not reported', inferred: false },
-                  { label: 'Equipment', value: 'P-204', inferred: false },
-                  { label: 'Reported Time', value: 'Morning · 28 Aug 2026', inferred: false },
-                ].map(({ label, value, inferred }) => (
-                  <div
-                    key={label}
-                    className="flex items-center gap-4 px-4 py-3"
-                    style={{ background: 'var(--c-card)' }}
-                  >
-                    <span
-                      className="w-32 shrink-0 text-[12px]"
-                      style={{ color: 'var(--c-muted)' }}
-                    >
-                      {label}
-                    </span>
-                    <div className="flex flex-1 items-center gap-2">
-                      {editingField === label ? (
-                        <input
-                          autoFocus
-                          defaultValue={value}
-                          className="flex-1 rounded-[6px] px-2 py-1 text-[13px]"
-                          style={{
-                            background: 'var(--c-page)',
-                            border: '1px solid rgba(244,111,41,0.4)',
-                            color: 'var(--c-text)',
-                            outline: 'none',
-                          }}
-                          onBlur={() => setEditingField(null)}
-                          onKeyDown={(e) => e.key === 'Enter' && setEditingField(null)}
-                        />
-                      ) : (
-                        <span className="text-[13px] font-medium" style={{ color: 'var(--c-text)' }}>
-                          {value}
-                        </span>
-                      )}
-                      {inferred && editingField !== label && (
-                        <span
-                          className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                          style={{
-                            background: 'rgba(244,111,41,0.10)',
-                            color: '#D97706',
-                            letterSpacing: '0.04em',
-                          }}
-                        >
-                          Inferred
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => setEditingField(editingField === label ? null : label)}
-                      className="text-[11px] font-medium transition-opacity duration-150 hover:opacity-70"
-                      style={{ color: 'var(--c-subtle)' }}
-                    >
-                      {editingField === label ? 'Done' : 'Edit'}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Original statement */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-2 text-[10px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-                Original Statement
-              </p>
-              <p className="text-[13px] italic leading-relaxed" style={{ color: 'var(--c-muted)' }}>
-                "{inputText}"
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* ── MATCH PROCESSING ─────────────────────────────────── */}
-        {step === 'match-processing' && (
-          <div className="flex flex-col gap-5">
-            <p className="text-[15px] font-semibold" style={{ color: 'var(--c-text)' }}>
-              Finding schedule activity
-            </p>
-            <div className="flex flex-col gap-3">
-              {[
-                'Checking equipment reference',
-                'Checking discipline',
-                'Checking area',
-                'Comparing schedule terminology',
-                'Ranking candidates',
-              ].map((label, i) => {
-                const done = matchStep > i + 1
-                const active = matchStep === i + 1
-                return (
-                  <div
-                    key={label}
-                    className="flex items-center gap-3"
-                    style={{
-                      opacity: matchStep >= i + 1 ? 1 : 0.3,
-                      transition: 'opacity 300ms',
-                    }}
-                  >
-                    <StepIcon done={done} active={active} />
-                    <span
-                      className="text-[14px]"
-                      style={{
-                        color: done ? 'var(--c-text)' : active ? 'var(--c-text)' : 'var(--c-muted)',
-                        fontWeight: active ? 500 : 400,
-                      }}
-                    >
-                      {label}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ── MATCH PREVIEW ────────────────────────────────────── */}
-        {step === 'match-preview' && (
-          <div className="flex flex-col gap-5">
-            <div>
-              <p className="mb-1 text-[11px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}>
-                Likely Schedule Match
-              </p>
-              <p className="text-[12px]" style={{ color: 'var(--c-muted)' }}>
-                SENTINEL matched your update to the following activity.
-              </p>
-            </div>
-
-            {/* AI Suggested card — distinct from Verified */}
-            <div
-              className="rounded-[14px] p-5"
-              style={{
-                background: 'rgba(245,158,11,0.06)',
-                border: '1.5px dashed rgba(217,119,6,0.35)',
-              }}
-            >
-              <div className="mb-3 flex items-start justify-between">
-                <span
-                  className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase"
-                  style={{
-                    background: 'rgba(245,158,11,0.15)',
-                    color: '#D97706',
-                    letterSpacing: '0.08em',
-                    border: '1px solid rgba(217,119,6,0.3)',
-                  }}
-                >
-                  AI Suggested
-                </span>
-                <div className="text-right">
-                  <span
-                    className="text-[22px] font-bold"
-                    style={{ color: '#D97706', fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums' }}
-                  >
-                    93%
-                  </span>
-                  <p className="text-[11px]" style={{ color: 'var(--c-muted)' }}>Strong match</p>
                 </div>
               </div>
-              <p
-                className="text-[16px] font-bold tracking-[-0.01em]"
-                style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}
-              >
-                {ACTIVITIES[0].label}
-              </p>
-              <p className="mt-1 text-[12px]" style={{ color: 'var(--c-muted)' }}>
-                {ACTIVITIES[0].tier} · {ACTIVITIES[0].discipline} · {ACTIVITIES[0].area}
-              </p>
+              <p className="mt-4 text-[11px]" style={{ color: 'var(--c-subtle)' }}>Event reference: {savedEventId}</p>
             </div>
-
-            {/* Why this match */}
-            <div
-              className="rounded-[12px] p-4"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <p className="mb-3 text-[11px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>
-                Why this match?
-              </p>
-              <div className="flex flex-col gap-2">
-                {['Equipment P-204', 'Rotating Equipment', 'Utility Block', 'Strong terminology match'].map((sig) => (
-                  <div key={sig} className="flex items-center gap-2">
-                    <CheckCircle2 size={13} strokeWidth={2} style={{ color: '#16A34A' }} />
-                    <span className="text-[13px]" style={{ color: 'var(--c-text)' }}>{sig}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Alternatives */}
-            <div
-              className="rounded-[12px] overflow-hidden"
-              style={{ border: '1px solid var(--c-border)' }}
-            >
-              <button
-                className="flex w-full items-center justify-between px-4 py-3 text-left"
-                style={{ background: 'var(--c-page)' }}
-                onClick={() => setShowAlternatives((v) => !v)}
-              >
-                <span className="text-[13px] font-semibold" style={{ color: 'var(--c-text)' }}>
-                  2 alternative matches
-                </span>
-                {showAlternatives ? (
-                  <ChevronDown size={14} strokeWidth={2} style={{ color: 'var(--c-muted)' }} />
-                ) : (
-                  <ChevronRight size={14} strokeWidth={2} style={{ color: 'var(--c-muted)' }} />
-                )}
-              </button>
-              {showAlternatives && (
-                <div
-                  className="divide-y"
-                  style={{ borderColor: 'var(--c-border)' }}
-                >
-                  {ACTIVITIES.slice(1).map((alt) => (
-                    <div
-                      key={alt.id}
-                      className="flex items-center justify-between px-4 py-3"
-                      style={{ background: 'var(--c-card)' }}
-                    >
-                      <div>
-                        <p
-                          className="text-[12px] font-semibold"
-                          style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}
-                        >
-                          {alt.label}
-                        </p>
-                        <p className="text-[11px]" style={{ color: 'var(--c-muted)' }}>
-                          {alt.tier} · {alt.discipline} · {alt.area}
-                        </p>
-                      </div>
-                      <span
-                        className="text-[14px] font-bold"
-                        style={{ color: 'var(--c-muted)', fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        {alt.confidence}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── SUCCESS ──────────────────────────────────────────── */}
-        {step === 'success' && (
-          <div className="flex flex-col items-center py-8 text-center gap-5">
-            <div
-              className="flex h-14 w-14 items-center justify-center rounded-full"
-              style={{ background: 'rgba(22, 163, 74, 0.12)' }}
-            >
-              <CheckCircle2 size={28} strokeWidth={1.5} style={{ color: '#16A34A' }} />
-            </div>
-            <div>
-              <h3
-                className="text-[20px] font-bold tracking-[-0.02em]"
-                style={{ color: 'var(--c-text)' }}
-              >
-                Progress submitted
-              </h3>
-              <p className="mt-1 text-[14px]" style={{ color: 'var(--c-muted)' }}>
-                Your execution update has been recorded.
-              </p>
-            </div>
-
-            <div
-              className="w-full rounded-[14px] p-5 text-left"
-              style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }}
-            >
-              <div className="mb-4 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-[12px]" style={{ color: 'var(--c-muted)' }}>Status</span>
-                  <span
-                    className="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    style={{ background: 'rgba(245,158,11,0.12)', color: '#D97706' }}
-                  >
-                    Awaiting Review
-                  </span>
-                </div>
-                <div
-                  className="h-px"
-                  style={{ background: 'var(--c-border)' }}
-                />
-                <div className="flex items-start justify-between gap-4">
-                  <span className="text-[12px]" style={{ color: 'var(--c-muted)' }}>Likely Match</span>
-                  <span
-                    className="text-right text-[12px] font-semibold"
-                    style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}
-                  >
-                    EQUIPMENT ALIGNMENT — P-204
-                  </span>
-                </div>
-              </div>
-              <p className="text-[11px]" style={{ color: 'var(--c-subtle)' }}>
-                This relationship will follow the project's review policy before becoming verified schedule truth.
-              </p>
-            </div>
-
-            <div className="flex w-full flex-col gap-2 pt-2">
-              <button
-                className="w-full rounded-[10px] py-2.5 text-[14px] font-semibold transition-opacity hover:opacity-80"
-                style={{
-                  background: 'var(--c-page)',
-                  border: '1px solid var(--c-border)',
-                  color: 'var(--c-text)',
-                }}
-              >
-                View Actual
-              </button>
-              <button
-                onClick={() => {
-                  setStep('input')
-                  setSelectedArea(null)
-                  setInputText('')
-                }}
-                className="w-full rounded-[10px] py-2.5 text-[14px] font-semibold transition-opacity hover:opacity-80"
-                style={{ color: '#F46F29' }}
-              >
-                Log Another Update
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Footer */}
-      {step !== 'success' && step !== 'processing' && step !== 'match-processing' && (
-        <div
-          style={{
-            flexShrink: 0,
-            padding: '16px 24px',
-            borderTop: '1px solid var(--c-border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            background: 'var(--c-card)',
-          }}
-        >
-          {/* Left action */}
-          {step === 'input' ? (
-            <button
-              onClick={onClose}
-              className="rounded-[10px] px-4 py-2.5 text-[14px] font-medium transition-colors duration-150"
-              style={{
-                background: 'var(--c-page)',
-                border: '1px solid var(--c-border)',
-                color: 'var(--c-muted)',
-              }}
-            >
-              Cancel
-            </button>
           ) : (
-            <button
-              onClick={handleBack}
-              className="rounded-[10px] px-4 py-2.5 text-[14px] font-medium transition-colors duration-150"
-              style={{
-                background: 'var(--c-page)',
-                border: '1px solid var(--c-border)',
-                color: 'var(--c-muted)',
-              }}
-            >
-              Back
-            </button>
+            <form id="connected-manual-capture" onSubmit={submit} className="flex flex-col gap-5">
+              <div className="rounded-[12px] p-4" style={{ background: 'var(--c-brand-tint)', border: '1px solid rgba(244,111,41,0.22)' }}>
+                <div className="flex items-start gap-3">
+                  <ShieldCheck size={18} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} />
+                  <div>
+                    <p className="text-[13px] font-semibold" style={{ color: 'var(--c-text)' }}>{access.project?.name ?? 'No selected project'}</p>
+                    <p className="mt-1 text-[12px] leading-5" style={{ color: 'var(--c-muted)' }}>This form saves directly to the selected project. It creates a pending event for human review and does not update the schedule.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <label><Label>Report date <span style={{ color: '#DC2626' }}>*</span></Label>
+                  <input type="date" required value={draft.report_date} onChange={e => update('report_date', e.target.value)} disabled={busy} style={fieldStyle} />
+                </label>
+                <label><Label>Event type <span style={{ color: '#DC2626' }}>*</span></Label>
+                  <select value={draft.event_type} onChange={e => update('event_type', e.target.value as ProposedEvent['event_type'])} disabled={busy} style={fieldStyle}>
+                    <option value="progress_observation">Progress observation</option><option value="start">Activity started</option><option value="finish">Activity finished</option>
+                  </select>
+                </label>
+              </div>
+
+              <label><Label>Actual date <span className="font-normal" style={{ color: 'var(--c-subtle)' }}>— leave blank if unknown</span></Label>
+                <input type="date" value={draft.actual_date ?? ''} max={draft.report_date || undefined} onChange={e => update('actual_date', e.target.value || null)} disabled={busy} style={fieldStyle} />
+                <span className="mt-1.5 block text-[11px]" style={{ color: 'var(--c-subtle)' }}>Use only the date explicitly reported for this observation.</span>
+              </label>
+
+              <label><Label>Raw field update <span style={{ color: '#DC2626' }}>*</span></Label>
+                <textarea ref={rawTextRef} rows={6} maxLength={50000} required value={draft.text} onChange={e => update('text', e.target.value)} disabled={busy} placeholder="Paste or type the original site update without rewriting it." style={{ ...fieldStyle, resize: 'vertical', lineHeight: 1.55 }} />
+                <span className="mt-1.5 block text-[11px]" style={{ color: 'var(--c-subtle)' }}>The complete text is stored as the original evidence.</span>
+              </label>
+
+              <div>
+                <div className="mb-1.5 flex items-center justify-between gap-3"><Label>Source quote <span style={{ color: '#DC2626' }}>*</span></Label>
+                  <div className="flex gap-3"><button type="button" onClick={useSelectedQuote} disabled={busy || !draft.text} className="text-[11px] font-semibold" style={{ color: '#F46F29' }}>Use selected text</button>
+                    <button type="button" onClick={() => update('source_quote', draft.text)} disabled={busy || !draft.text} className="text-[11px] font-semibold" style={{ color: '#F46F29' }}>Use complete update</button></div>
+                </div>
+                <div className="relative"><Quote size={15} className="absolute left-3 top-3" style={{ color: 'var(--c-subtle)' }} />
+                  <textarea rows={3} maxLength={50000} required value={draft.source_quote} onChange={e => update('source_quote', e.target.value)} disabled={busy} placeholder="Copy the exact words that support this event." style={{ ...fieldStyle, paddingLeft: 36, resize: 'vertical', lineHeight: 1.5 }} />
+                </div>
+                <span className="mt-1.5 block text-[11px]" style={{ color: 'var(--c-subtle)' }}>This must be an exact, unchanged part of the raw field update.</span>
+              </div>
+
+              <div className="rounded-[12px] px-4 py-3 text-[12px] leading-5" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)', color: 'var(--c-muted)' }}>
+                This is structured manual capture. SENTINEL is not running AI extraction, confidence scoring or schedule matching in this step.
+              </div>
+              {!canCapture && <p role="alert" className="text-[12px] text-red-600">Your current project role cannot capture progress.</p>}
+              {error && <p role="alert" className="rounded-[10px] px-3 py-2 text-[12px] text-red-700" style={{ background: 'rgba(220,38,38,0.08)' }}>{error}</p>}
+            </form>
           )}
-
-          {/* Right action */}
-          <div className="flex items-center gap-3">
-            {step === 'match-preview' && (
-              <p className="text-right text-[11px]" style={{ color: 'var(--c-subtle)', maxWidth: 220 }}>
-                This relationship will follow the project's review policy before becoming verified schedule truth.
-              </p>
-            )}
-            <button
-              onClick={() => {
-                if (step === 'structured') handleContinue()
-                else if (step === 'match-preview') handleContinue()
-                else handleContinue()
-              }}
-              disabled={step === 'clarification' && !selectedArea}
-              className="rounded-[10px] px-5 py-2.5 text-[14px] font-semibold text-white transition-all duration-150 hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-              style={{
-                background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)',
-                boxShadow: '0 2px 10px rgba(244,111,41,0.28)',
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {step === 'structured' ? 'Confirm Actual' : step === 'match-preview' ? 'Submit Progress' : 'Continue'}
-            </button>
-          </div>
         </div>
-      )}
 
-      {step === 'success' && (
-        <div
-          style={{
-            flexShrink: 0,
-            padding: '16px 24px',
-            borderTop: '1px solid var(--c-border)',
-          }}
-        >
-          <button
-            onClick={handleDone}
-            className="w-full rounded-[10px] py-2.5 text-[14px] font-semibold text-white transition-all duration-150 hover:opacity-90"
-            style={{
-              background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)',
-              boxShadow: '0 2px 10px rgba(244,111,41,0.28)',
-            }}
-          >
-            Done
-          </button>
+        <div className="flex shrink-0 items-center justify-end gap-3 px-7 py-4" style={{ borderTop: '1px solid var(--c-border)' }}>
+          {savedEventId ? <><a href="/workspace" className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ border: '1px solid var(--c-border)', color: 'var(--c-text)' }}>View connected workspace</a>
+            <button onClick={captureAnother} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)' }}>Capture another update</button>
+            <button onClick={handleClose} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ color: 'var(--c-muted)' }}>Close</button></>
+          : <><button onClick={handleClose} disabled={busy} className="rounded-[9px] px-4 py-2 text-[13px] font-semibold" style={{ color: 'var(--c-muted)' }}>Cancel</button>
+            <button form="connected-manual-capture" type="submit" disabled={busy || !canCapture || !access.project} className="rounded-[9px] px-5 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)', boxShadow: '0 2px 8px rgba(244,111,41,0.28)' }}>{busy ? 'Saving securely…' : 'Save for human review'}</button></>}
         </div>
-      )}
+      </div>
     </Drawer>
   )
 }

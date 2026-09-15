@@ -179,7 +179,7 @@ function AppShell() {
         />
 
         <div role="note" className="shrink-0 px-7 py-2 text-[12px]" style={{ background: 'var(--c-brand-tint)', color: 'var(--c-text)', borderBottom: '1px solid var(--c-border)' }}>
-          Preview screens use sample data and local interactions. Real reports, review, schedule actuals and audit are in <a className="font-semibold underline" href="/workspace">Connected Workspace</a>.
+          Manual progress capture is connected to this project. Other preview screens still use sample data; real review, schedule actuals and audit remain in <a className="font-semibold underline" href="/workspace">Connected Workspace</a>.
         </div>
 
         <main
@@ -270,8 +270,7 @@ function AppShell() {
       <CaptureChooser
         open={captureChooserOpen}
         onClose={() => setCaptureChooserOpen(false)}
-        onLogWithSentinel={() => setLogDrawerOpen(true)}
-        onUploadReport={() => setUploadReportOpen(true)}
+        onManualCapture={() => setLogDrawerOpen(true)}
       />
       <LogWithSentinelDrawer open={logDrawerOpen} onClose={() => setLogDrawerOpen(false)} />
       <UploadReportDrawer open={uploadReportOpen} onClose={() => setUploadReportOpen(false)}

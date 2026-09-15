@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type { LucideIcon } from 'lucide-react'
 import { useConnectedProject } from '../context/ConnectedProjectContext'
 import { shellNavVisible } from '../lib/connected-shell'
+import { canCaptureProgress } from '../lib/manual-capture'
 import {
   LayoutDashboard,
   ClipboardCheck,
@@ -223,7 +224,7 @@ interface SidebarProps {
 export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, onCaptureProgress }: SidebarProps) {
   const [projectOpen, setProjectOpen] = useState(false)
   const access = useConnectedProject()
-  const showCapture = ['site-supervisor', 'discipline-engineer', 'planner', 'project-controls', 'administrator'].includes(access.role ?? '')
+  const showCapture = canCaptureProgress(access.role)
 
   return (
     <aside
