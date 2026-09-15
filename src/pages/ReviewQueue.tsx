@@ -1,544 +1,109 @@
-import { useState, useRef } from 'react'
-import { Search, X, Check } from 'lucide-react'
-import { reviewItems, type ReviewItem, type ReviewStatus } from '../data/reviewMockData'
+import { useEffect, useRef, useState } from 'react'
+import { CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { useConnectedAuth } from '../context/ConnectedAuthContext'
+import { useConnectedProject } from '../context/ConnectedProjectContext'
 import ReviewMatchDrawer from '../components/review/ReviewMatchDrawer'
-import { FilterDropdown } from '../components/FilterDropdown'
+import { getProjectWorkspace } from '../lib/connected-api'
+import type { ProjectWorkspaceResponse, ProposedEvent } from '../lib/connected-types'
+import { canReviewActual, eventsWithStatus } from '../lib/real-review'
 
-type Tab = 'all' | 'low-confidence' | 'ambiguous' | 'incomplete' | 'unmatched'
+const emptyWorkspace: ProjectWorkspaceResponse = { events: [], activities: [], actuals: [], audit: [], limit: 200 }
+type QueueTab = 'pending' | 'verified'
 
-const TAB_DEFS: { id: Tab; label: string; count: (items: ReviewItem[]) => number }[] = [
-  { id: 'all', label: 'All', count: (items) => items.length },
-  { id: 'low-confidence', label: 'Low Confidence', count: (items) => items.filter((i) => i.confidence > 0 && i.confidence < 60).length },
-  { id: 'ambiguous', label: 'Ambiguous', count: (items) => items.filter((i) => i.status === 'ambiguous').length },
-  { id: 'incomplete', label: 'Incomplete', count: (items) => items.filter((i) => i.status === 'incomplete').length },
-  { id: 'unmatched', label: 'Unmatched', count: (items) => items.filter((i) => i.status === 'unmatched').length },
-]
+function readable(value: string) { return value.replace(/_/g, ' ') }
 
-const STATUS_STYLE: Record<ReviewStatus, { bg: string; color: string; label: string }> = {
-  'needs-review': { bg: 'rgba(37,99,235,0.10)', color: '#2563EB', label: 'Needs Review' },
-  ambiguous: { bg: 'rgba(217,119,6,0.12)', color: '#D97706', label: 'Ambiguous' },
-  incomplete: { bg: 'rgba(245,158,11,0.10)', color: '#B45309', label: 'Incomplete' },
-  unmatched: { bg: 'rgba(220,38,38,0.10)', color: '#DC2626', label: 'Unmatched' },
-}
-
-function ConfidencePill({ value }: { value: number }) {
-  if (value === 0)
-    return (
-      <span className="text-[13px]" style={{ color: 'var(--c-subtle)' }}>
-        —
+function EventRow({ event, onOpen }: { event: ProposedEvent; onOpen: () => void }) {
+  const pending = event.review_status === 'pending'
+  return (
+    <button onClick={onOpen} className="grid w-full grid-cols-[minmax(260px,1fr)_130px_130px_100px_120px] items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[var(--c-page)]" style={{ borderBottom: '1px solid var(--c-border)' }}>
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold" style={{ color: 'var(--c-text)' }}>{event.source_quote}</p>
+        <p className="mt-1 truncate text-[11px]" style={{ color: 'var(--c-muted)' }}>{event.id}</p>
+      </div>
+      <span className="text-[12px] capitalize" style={{ color: 'var(--c-text)' }}>{readable(event.event_type)}</span>
+      <span className="text-[12px]" style={{ color: 'var(--c-text)' }}>{event.actual_date ?? 'Unknown'}</span>
+      <span className="text-[12px]" style={{ color: 'var(--c-muted)' }}>Revision {event.revision}</span>
+      <span className="flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold" style={{ background: pending ? 'rgba(217,119,6,0.12)' : 'rgba(22,163,74,0.12)', color: pending ? '#B45309' : '#16A34A' }}>
+        {pending ? <Clock3 size={12} /> : <CheckCircle2 size={12} />}{pending ? 'Pending' : 'Verified'}
       </span>
-    )
-  const color = value >= 85 ? '#16A34A' : value >= 60 ? '#D97706' : '#DC2626'
-  return (
-    <span
-      className="text-[14px] font-bold"
-      style={{ color, fontFamily: 'var(--font-ui)', fontVariantNumeric: 'tabular-nums' }}
-    >
-      {value}%
-    </span>
+    </button>
   )
-}
-
-interface ToastProps {
-  message: string
-  onDismiss: () => void
-}
-
-function Toast({ message, onDismiss }: ToastProps) {
-  return (
-    <div
-      className="fixed top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-[12px] px-4 py-3 text-[13px] font-semibold text-white shadow-lg z-[80]"
-      style={{
-        background: '#16A34A',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.2)',
-        animation: 'fadeInDown 200ms ease',
-      }}
-    >
-      <Check size={15} strokeWidth={2.5} />
-      {message}
-      <button onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">
-        <X size={14} strokeWidth={2} />
-      </button>
-    </div>
-  )
-}
-
-const DISCIPLINE_OPTIONS = [
-  { value: 'Piping', label: 'Piping' },
-  { value: 'Rotating Equipment', label: 'Rotating Equipment' },
-  { value: 'Electrical', label: 'Electrical' },
-  { value: 'Structural', label: 'Structural' },
-  { value: 'Civil', label: 'Civil' },
-]
-const AREA_OPTIONS = [
-  { value: 'Area A', label: 'Area A' },
-  { value: 'Area B', label: 'Area B' },
-  { value: 'Utility Block', label: 'Utility Block' },
-  { value: 'Tank Farm', label: 'Tank Farm' },
-]
-const SOURCE_OPTIONS = [
-  { value: 'Supervisor Update', label: 'Supervisor Update' },
-  { value: 'DPR Extract', label: 'DPR Extract' },
-]
-const CONFIDENCE_OPTIONS = [
-  { value: 'high', label: 'High (≥85%)' },
-  { value: 'medium', label: 'Medium (60–84%)' },
-  { value: 'low', label: 'Low (<60%)' },
-  { value: 'none', label: 'No Match' },
-]
-const SORT_OPTIONS = [
-  { value: 'confidence-asc', label: 'Confidence: Low first' },
-  { value: 'confidence-desc', label: 'Confidence: High first' },
-  { value: 'date-desc', label: 'Date: Newest first' },
-  { value: 'date-asc', label: 'Date: Oldest first' },
-]
-
-function matchConfidence(value: number, filter: string): boolean {
-  if (!filter) return true
-  if (filter === 'high') return value >= 85
-  if (filter === 'medium') return value >= 60 && value < 85
-  if (filter === 'low') return value > 0 && value < 60
-  if (filter === 'none') return value === 0
-  return true
 }
 
 export default function ReviewQueue() {
-  const [items, setItems] = useState<ReviewItem[]>(reviewItems)
-  const [tab, setTab] = useState<Tab>('all')
+  const auth = useConnectedAuth()
+  const access = useConnectedProject()
+  const projectId = access.project?.id ?? ''
+  const scope = `${auth.user?.id ?? ''}:${projectId}`
+  const [workspace, setWorkspace] = useState<{ scope: string; data: ProjectWorkspaceResponse }>({ scope: '', data: emptyWorkspace })
+  const data = workspace.scope === scope ? workspace.data : emptyWorkspace
+  const [tab, setTab] = useState<QueueTab>('pending')
   const [search, setSearch] = useState('')
-  const [filterDiscipline, setFilterDiscipline] = useState('')
-  const [filterArea, setFilterArea] = useState('')
-  const [filterSource, setFilterSource] = useState('')
-  const [filterConfidence, setFilterConfidence] = useState('')
-  const [sort, setSort] = useState('')
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [openDrawerId, setOpenDrawerId] = useState<string | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [openEventId, setOpenEventId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const generation = useRef(0)
 
-  const hasFilters = !!(search || filterDiscipline || filterArea || filterSource || filterConfidence || sort)
-
-  function clearFilters() {
-    setSearch(''); setFilterDiscipline(''); setFilterArea(''); setFilterSource(''); setFilterConfidence(''); setSort('')
-  }
-
-  function showToast(msg: string) {
-    setToast(msg)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 4500)
-  }
-
-  function filterItems(all: ReviewItem[]): ReviewItem[] {
-    let result = all
-      .filter((item) => {
-        if (tab === 'low-confidence') return item.confidence > 0 && item.confidence < 60
-        if (tab === 'ambiguous') return item.status === 'ambiguous'
-        if (tab === 'incomplete') return item.status === 'incomplete'
-        if (tab === 'unmatched') return item.status === 'unmatched'
-        return true
-      })
-      .filter((item) =>
-        search === '' ||
-        item.fieldText.toLowerCase().includes(search.toLowerCase()) ||
-        item.id.toLowerCase().includes(search.toLowerCase()) ||
-        (item.suggestedActivity?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-        item.extractedDiscipline.toLowerCase().includes(search.toLowerCase())
-      )
-      .filter((item) => !filterDiscipline || item.extractedDiscipline === filterDiscipline)
-      .filter((item) => !filterArea || item.extractedArea === filterArea)
-      .filter((item) => !filterSource || item.source === filterSource)
-      .filter((item) => matchConfidence(item.confidence, filterConfidence))
-
-    if (sort === 'confidence-asc') result = [...result].sort((a, b) => a.confidence - b.confidence)
-    else if (sort === 'confidence-desc') result = [...result].sort((a, b) => b.confidence - a.confidence)
-    else if (sort === 'date-desc') result = [...result].sort((a, b) => b.sourceDate.localeCompare(a.sourceDate))
-    else if (sort === 'date-asc') result = [...result].sort((a, b) => a.sourceDate.localeCompare(b.sourceDate))
-
-    return result
-  }
-
-  const filtered = filterItems(items)
-  const openItem = items.find((i) => i.id === openDrawerId) ?? null
-
-  function handleAccept(id: string) {
-    const accepted = items.find((i) => i.id === id)
-    setItems((prev) => prev.filter((i) => i.id !== id))
-    setOpenDrawerId(null)
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-    if (accepted?.suggestedActivity) {
-      showToast(`Match verified · ${accepted.suggestedActivity} updated.`)
+  async function refresh() {
+    if (!projectId) return
+    const version = ++generation.current
+    setLoading(true); setError('')
+    try {
+      const result = await getProjectWorkspace(projectId)
+      if (version === generation.current) setWorkspace({ scope, data: result })
+    } catch (cause) {
+      if (version === generation.current) setError(cause instanceof Error ? cause.message : 'Unable to load the connected review queue.')
+    } finally {
+      if (version === generation.current) setLoading(false)
     }
   }
 
-  function toggleSelect(id: string, eligible: boolean) {
-    if (!eligible) return
-    setSelectedIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
-  }
+  useEffect(() => {
+    setWorkspace({ scope: '', data: emptyWorkspace }); setError(''); setOpenEventId(null)
+    void refresh()
+    return () => { generation.current++ }
+  }, [projectId, auth.user?.id])
 
-  function handleBulkVerify() {
-    const toVerify = Array.from(selectedIds)
-    setItems((prev) => prev.filter((i) => !toVerify.includes(i.id)))
-    setSelectedIds(new Set())
-    showToast(`${toVerify.length} match${toVerify.length !== 1 ? 'es' : ''} verified.`)
-  }
-
-  const eligibleForBulk = items.filter((i) => i.isBulkEligible)
-  const bulkCount = selectedIds.size
+  const pending = eventsWithStatus(data.events, 'pending')
+  const verified = eventsWithStatus(data.events, 'verified')
+  const active = tab === 'pending' ? pending : verified
+  const normalizedSearch = search.toLowerCase().trim()
+  const visible = active.filter(event => !normalizedSearch || [
+    event.id, event.event_type, event.source_quote, event.report?.raw_text, event.report?.report_date, event.actual_date,
+  ].some(value => value?.toLowerCase().includes(normalizedSearch)))
+  const openEvent = data.events.find(event => event.id === openEventId) ?? null
+  const canReview = canReviewActual(access.role)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Toast */}
-      {toast && <Toast message={toast} onDismiss={() => setToast(null)} />}
-
-      {/* ── Fixed chrome: page header + tabs + toolbar + bulk bar ── */}
-      <div style={{ flexShrink: 0, padding: '28px 32px 0' }}>
-
-      {/* Page header */}
-      <div className="mb-5 flex items-start justify-between">
-        <div>
-          <h1
-            className="text-[26px] font-bold leading-[32px] tracking-[-0.02em]"
-            style={{ color: 'var(--c-text)' }}
-          >
-            Review Queue
-          </h1>
-          <p className="mt-1 text-[14px]" style={{ color: 'var(--c-muted)' }}>
-            Validate execution events before they affect the project schedule.
-          </p>
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="shrink-0 px-8 pb-4 pt-7">
+        <div className="mb-5 flex items-start justify-between gap-5">
+          <div><div className="mb-2 flex items-center gap-2"><span className="rounded-full px-2 py-1 text-[10px] font-bold uppercase" style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', letterSpacing: '0.07em' }}>Connected</span><span className="text-[11px]" style={{ color: 'var(--c-muted)' }}>Human verification</span></div>
+            <h1 className="text-[26px] font-bold leading-8 tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>Review Queue</h1>
+            <p className="mt-1 text-[14px]" style={{ color: 'var(--c-muted)' }}>Review original evidence and manually select the matching L6 activity before a date affects the schedule.</p></div>
+          <button onClick={() => void refresh()} disabled={loading} className="flex items-center gap-2 rounded-[9px] px-3.5 py-2 text-[12px] font-semibold disabled:opacity-60" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)' }}><RefreshCw size={14} className={loading ? 'animate-spin' : ''} />{loading ? 'Refreshing…' : 'Refresh'}</button>
         </div>
-        <div
-          className="flex items-center gap-2 rounded-[10px] px-3.5 py-2"
-          style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
-        >
-          <span
-            className="text-[22px] font-bold"
-            style={{
-              color: '#F46F29',
-              fontFamily: 'var(--font-ui)',
-              fontVariantNumeric: 'tabular-nums',
-              letterSpacing: '-0.015em',
-            }}
-          >
-            {items.length}
-          </span>
-          <span className="text-[13px]" style={{ color: 'var(--c-muted)' }}>
-            pending
-          </span>
-        </div>
-      </div>
 
-      {/* Filter tabs */}
-      <div
-        className="mb-4 flex items-center gap-1 rounded-[12px] p-1"
-        style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', width: 'fit-content' }}
-      >
-        {TAB_DEFS.map((t) => {
-          const count = t.count(items)
-          const active = tab === t.id
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className="flex items-center gap-1.5 rounded-[9px] px-3.5 py-2 text-[13px] font-medium transition-all duration-150"
-              style={{
-                background: active ? 'var(--c-page)' : 'transparent',
-                color: active ? 'var(--c-text)' : 'var(--c-muted)',
-                boxShadow: active ? 'var(--c-shadow-card)' : 'none',
-                border: active ? '1px solid var(--c-border)' : '1px solid transparent',
-              }}
-            >
-              {t.label}
-              <span
-                className="rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                style={{
-                  background: active ? (t.id === 'all' ? 'rgba(244,111,41,0.12)' : 'var(--c-border)') : 'var(--c-border)',
-                  color: active && t.id === 'all' ? '#F46F29' : 'var(--c-muted)',
-                }}
-              >
-                {count}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Toolbar */}
-      <div className="mb-4 flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search
-            size={14}
-            strokeWidth={2}
-            style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: 'var(--c-muted)',
-            }}
-          />
-          <input
-            type="text"
-            placeholder="Search execution events..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-[10px] py-2 pl-9 pr-3 text-[13px]"
-            style={{
-              background: 'var(--c-card)',
-              border: '1px solid var(--c-border)',
-              color: 'var(--c-text)',
-              outline: 'none',
-              fontFamily: 'var(--font-ui)',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = 'rgba(244,111,41,0.45)')}
-            onBlur={(e) => (e.target.style.borderColor = 'var(--c-border)')}
-          />
-        </div>
-        <FilterDropdown label="Discipline" allLabel="All Disciplines" options={DISCIPLINE_OPTIONS} value={filterDiscipline} onChange={setFilterDiscipline} />
-        <FilterDropdown label="Area" allLabel="All Areas" options={AREA_OPTIONS} value={filterArea} onChange={setFilterArea} />
-        <FilterDropdown label="Source" allLabel="All Sources" options={SOURCE_OPTIONS} value={filterSource} onChange={setFilterSource} />
-        <FilterDropdown label="Confidence" allLabel="All Confidence" options={CONFIDENCE_OPTIONS} value={filterConfidence} onChange={setFilterConfidence} dropdownMinWidth={180} />
-        <FilterDropdown label="Sort" allLabel="Default Order" options={SORT_OPTIONS} value={sort} onChange={setSort} dropdownMinWidth={200} />
-        {hasFilters && (
-          <button
-            onClick={clearFilters}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '7px 11px', borderRadius: 9, fontSize: 13,
-              background: 'var(--c-card)', border: '1px solid var(--c-border)',
-              color: 'var(--c-muted)', cursor: 'pointer', fontFamily: 'var(--font-ui)',
-            }}
-          >
-            <X size={11} strokeWidth={2.5} />
-            Clear
-          </button>
-        )}
-      </div>
-
-      {/* Bulk action bar */}
-      {bulkCount > 0 && (
-        <div
-          className="mb-4 flex items-center justify-between rounded-[12px] px-4 py-3"
-          style={{
-            background: 'rgba(244,111,41,0.08)',
-            border: '1.5px solid rgba(244,111,41,0.30)',
-          }}
-        >
-          <span className="text-[13px] font-medium" style={{ color: '#F46F29' }}>
-            {bulkCount} selected
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setSelectedIds(new Set())}
-              className="rounded-[8px] px-3 py-1.5 text-[12px] font-medium"
-              style={{ color: 'var(--c-muted)', background: 'var(--c-card)', border: '1px solid var(--c-border)' }}
-            >
-              Clear
-            </button>
-            <button
-              onClick={handleBulkVerify}
-              className="rounded-[8px] px-3 py-1.5 text-[12px] font-semibold text-white"
-              style={{
-                background: 'linear-gradient(135deg, #F46F29 0%, #F59B4C 100%)',
-                boxShadow: '0 2px 8px rgba(244,111,41,0.28)',
-              }}
-            >
-              Verify Selected
-            </button>
+        <div className="mb-4 flex items-center justify-between gap-4">
+          <div className="flex w-fit items-center gap-1 rounded-[11px] p-1" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+            {([{ id: 'pending', label: 'Pending', count: pending.length }, { id: 'verified', label: 'Verified', count: verified.length }] as const).map(item => <button key={item.id} onClick={() => setTab(item.id)} className="flex items-center gap-2 rounded-[8px] px-3.5 py-2 text-[12px] font-semibold" style={{ background: tab === item.id ? 'var(--c-page)' : 'transparent', color: tab === item.id ? 'var(--c-text)' : 'var(--c-muted)', border: tab === item.id ? '1px solid var(--c-border)' : '1px solid transparent' }}>{item.label}<span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: item.id === 'pending' ? 'rgba(217,119,6,0.12)' : 'rgba(22,163,74,0.12)', color: item.id === 'pending' ? '#B45309' : '#16A34A' }}>{item.count}</span></button>)}
           </div>
+          <div className="relative w-full max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-muted)' }} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search real events or evidence…" className="w-full rounded-[10px] py-2.5 pl-9 pr-3 text-[13px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none' }} /></div>
         </div>
-      )}
-
-      </div>{/* end fixed chrome */}
-
-      {/* ── Scrollable table region ── */}
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: 'auto',
-          padding: '0 32px 32px',
-          scrollbarWidth: 'thin',
-          scrollbarColor: 'var(--c-border-strong) transparent',
-        }}
-      >
-      <div
-        className="rounded-[16px] overflow-hidden"
-        style={{ border: '1px solid var(--c-border)', background: 'var(--c-card)' }}
-      >
-        {/* Table header */}
-        <div
-          className="grid"
-          style={{
-            gridTemplateColumns: '40px 1fr 200px 110px 110px 90px 120px',
-            padding: '0 16px',
-            borderBottom: '1px solid var(--c-border)',
-            background: 'var(--c-page)',
-          }}
-        >
-          {/* Checkbox header */}
-          <div className="flex items-center py-3">
-            <span className="sr-only">Select</span>
-          </div>
-          {['EVENT', 'SUGGESTED ACTIVITY', 'DISCIPLINE', 'SOURCE', 'CONFIDENCE', 'STATUS'].map((col) => (
-            <div
-              key={col}
-              className="flex items-center py-3 text-[10px] font-bold uppercase"
-              style={{ color: 'var(--c-subtle)', letterSpacing: '0.09em' }}
-            >
-              {col}
-            </div>
-          ))}
-        </div>
-
-        {/* Rows */}
-        {filtered.length === 0 && (
-          <div className="py-16 text-center text-[14px]" style={{ color: 'var(--c-muted)' }}>
-            No items match current filters.
-          </div>
-        )}
-        {filtered.map((item, i) => {
-          const status = STATUS_STYLE[item.status]
-          const isOpen = openDrawerId === item.id
-          const isSelected = selectedIds.has(item.id)
-          const eligible = item.isBulkEligible
-
-          return (
-            <div
-              key={item.id}
-              className="grid cursor-pointer transition-colors duration-100"
-              style={{
-                gridTemplateColumns: '40px 1fr 200px 110px 110px 90px 120px',
-                padding: '0 16px',
-                minHeight: 64,
-                alignItems: 'center',
-                borderBottom: i < filtered.length - 1 ? '1px solid var(--c-border)' : 'none',
-                background: isOpen
-                  ? 'rgba(244,111,41,0.05)'
-                  : isSelected
-                  ? 'rgba(244,111,41,0.04)'
-                  : 'var(--c-card)',
-                borderLeft: isOpen ? '3px solid #F46F29' : '3px solid transparent',
-              }}
-              onClick={() => setOpenDrawerId(item.id === openDrawerId ? null : item.id)}
-              onMouseEnter={(e) => {
-                if (!isOpen) (e.currentTarget as HTMLElement).style.background = 'var(--c-page)'
-              }}
-              onMouseLeave={(e) => {
-                if (!isOpen) (e.currentTarget as HTMLElement).style.background = isSelected ? 'rgba(244,111,41,0.04)' : 'var(--c-card)'
-              }}
-            >
-              {/* Checkbox */}
-              <div
-                onClick={(e) => {
-                  e.stopPropagation()
-                  toggleSelect(item.id, eligible)
-                }}
-                className="flex items-center"
-                title={!eligible ? 'This item requires individual review.' : undefined}
-              >
-                {eligible ? (
-                  isSelected ? (
-                    <div
-                      className="flex h-5 w-5 items-center justify-center rounded-[5px]"
-                      style={{ background: '#F46F29', border: '1.5px solid #F46F29' }}
-                    >
-                      <Check size={11} strokeWidth={2.5} style={{ color: 'white' }} />
-                    </div>
-                  ) : (
-                    <div
-                      className="h-5 w-5 rounded-[5px]"
-                      style={{ border: '1.5px solid var(--c-border)' }}
-                    />
-                  )
-                ) : (
-                  <div
-                    className="h-5 w-5 rounded-[5px] opacity-30 cursor-not-allowed"
-                    style={{ border: '1.5px solid var(--c-border)' }}
-                  />
-                )}
-              </div>
-
-              {/* EVENT */}
-              <div className="pr-4 py-2">
-                <p
-                  className="text-[13px] font-semibold leading-[18px] line-clamp-2"
-                  style={{ color: 'var(--c-text)' }}
-                >
-                  {item.fieldText}
-                </p>
-                <p className="mt-0.5 text-[11px]" style={{ color: 'var(--c-muted)' }}>
-                  {item.extractedEvent} · {item.sourceDate.split(' ').slice(0, 2).join(' ')}
-                </p>
-              </div>
-
-              {/* SUGGESTED ACTIVITY */}
-              <div className="pr-3">
-                {item.suggestedActivity ? (
-                  <p
-                    className="text-[12px] font-semibold truncate"
-                    style={{ color: 'var(--c-text)', fontFamily: 'var(--font-data)' }}
-                  >
-                    {item.suggestedActivity}
-                  </p>
-                ) : (
-                  <p className="text-[12px] italic" style={{ color: 'var(--c-subtle)' }}>
-                    No match found
-                  </p>
-                )}
-              </div>
-
-              {/* DISCIPLINE */}
-              <div>
-                <p className="text-[12px]" style={{ color: 'var(--c-muted)' }}>
-                  {item.extractedDiscipline}
-                </p>
-              </div>
-
-              {/* SOURCE */}
-              <div>
-                <p className="text-[12px]" style={{ color: 'var(--c-muted)' }}>
-                  {item.source}
-                </p>
-              </div>
-
-              {/* CONFIDENCE */}
-              <div>
-                <ConfidencePill value={item.confidence} />
-              </div>
-
-              {/* STATUS */}
-              <div>
-                <span
-                  className="inline-block rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                  style={{ background: status.bg, color: status.color }}
-                >
-                  {status.label}
-                </span>
-              </div>
-            </div>
-          )
-        })}
+        <div className="flex items-start gap-2.5 rounded-[11px] px-4 py-3" style={{ background: 'var(--c-brand-tint)', border: '1px solid rgba(244,111,41,0.20)' }}><ShieldCheck size={16} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} /><p className="text-[12px] leading-5" style={{ color: 'var(--c-muted)' }}>Activities are not AI-ranked in this phase. The human reviewer chooses an eligible L6 activity; backend checks remain authoritative.</p></div>
+        {error && <p role="alert" className="mt-3 rounded-[10px] px-3 py-2 text-[12px] text-red-700" style={{ background: 'rgba(220,38,38,0.08)' }}>{error}</p>}
       </div>
-      </div>{/* end scrollable region */}
 
-      {/* Review Match Drawer */}
-      {openItem && (
-        <ReviewMatchDrawer
-          item={openItem}
-          open={!!openDrawerId}
-          onClose={() => setOpenDrawerId(null)}
-          onAccept={handleAccept}
-        />
-      )}
+      <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
+        <div className="overflow-hidden rounded-[16px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
+          <div className="grid grid-cols-[minmax(260px,1fr)_130px_130px_100px_120px] gap-4 px-5 py-3 text-[10px] font-bold uppercase" style={{ background: 'var(--c-page)', color: 'var(--c-subtle)', letterSpacing: '0.08em', borderBottom: '1px solid var(--c-border)' }}><span>Evidence</span><span>Event type</span><span>Actual date</span><span>Revision</span><span>Status</span></div>
+          {loading && workspace.scope !== scope ? <div className="py-16 text-center text-[13px]" style={{ color: 'var(--c-muted)' }}>Loading connected events…</div>
+          : visible.length === 0 ? <div className="py-16 text-center"><p className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>{search ? 'No events match this search.' : tab === 'pending' ? 'No pending events.' : 'No verified events.'}</p><p className="mt-1 text-[12px]" style={{ color: 'var(--c-muted)' }}>{tab === 'pending' ? 'New manual captures will appear here for human review.' : 'Verified events remain available as read-only evidence.'}</p></div>
+          : visible.map(event => <EventRow key={`${event.id}:${event.revision}`} event={event} onOpen={() => setOpenEventId(event.id)} />)}
+        </div>
+      </div>
+
+      <ReviewMatchDrawer open={openEvent !== null} event={openEvent} activities={data.activities} actuals={data.actuals} projectId={projectId} canReview={canReview} onClose={() => setOpenEventId(null)} onApproved={refresh} />
     </div>
   )
 }

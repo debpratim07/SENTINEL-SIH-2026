@@ -9,7 +9,7 @@
     "dev:api": "node --env-file-if-exists=.env.local server/index.ts",
     "check:server": "tsc -p tsconfig.server.json",
     "test:api": "node --test --test-isolation=none server/app.test.ts server/auth-callback.test.ts",
-    "test:frontend": "node --test --test-isolation=none src/lib/connected-projects.test.ts src/lib/connected-shell.test.ts src/lib/manual-capture.test.ts",
+    "test:frontend": "node --test --test-isolation=none src/lib/connected-projects.test.ts src/lib/connected-shell.test.ts src/lib/manual-capture.test.ts src/lib/real-review.test.ts",
     "build": "vite build --configLoader native",
     "preview": "vite preview --configLoader native",
     "format": "oxfmt"
