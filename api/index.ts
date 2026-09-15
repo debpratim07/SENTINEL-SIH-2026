@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { createHandler } from '../server/app.ts'
-import { allowedOrigins } from '../server/deployment-config.ts'
+import { createHandler } from '../server/app.js'
+import { allowedOrigins } from '../server/deployment-config.js'
 
 let connectedHandler: ReturnType<typeof createHandler> | null = null
 
