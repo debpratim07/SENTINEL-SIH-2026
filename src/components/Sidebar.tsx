@@ -241,7 +241,7 @@ export default function Sidebar({ collapsed: desktopCollapsed, onToggle, activeN
         WebkitBackdropFilter: 'var(--backdrop)',
         borderRight: '1px solid var(--c-border)',
         boxShadow: 'var(--c-shadow-glass)',
-        transition: 'width 220ms ease-out, min-width 220ms ease-out',
+        transition: 'transform 180ms ease-out',
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',

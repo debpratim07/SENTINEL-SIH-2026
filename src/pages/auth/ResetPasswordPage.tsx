@@ -1,3 +1,4 @@
+import { CompletionFlow } from '../../components/industrial-flow/CompletionFlow'
 import { useState } from 'react'
 import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import { useConnectedAuth } from '../../context/ConnectedAuthContext'
@@ -31,7 +32,7 @@ export default function ResetPasswordPage({ callbackError = '' }: { callbackErro
   const invalid = !auth.loading && (!auth.recoveryReady || !auth.session)
   return <main className="auth-page">
     <section className="auth-card" aria-labelledby="reset-title">
-      <div className="auth-mark"><KeyRound size={22}/></div>
+      {complete ? <CompletionFlow className="auth-completion" title="Password update confirmed"/> : <div className="auth-mark"><KeyRound size={22}/></div>}
       <p className="auth-eyebrow">SENTINEL ACCOUNT RECOVERY</p>
       <h1 id="reset-title">{complete ? 'Password updated' : invalid ? 'Recovery link unavailable' : 'Set a new password'}</h1>
       {complete ? <>

@@ -1,3 +1,4 @@
+import { WorkflowLoading, WorkflowEmpty } from '../components/industrial-flow/WorkflowFeedback'
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock3, RefreshCw, Search, ShieldCheck } from 'lucide-react'
 import { useConnectedAuth } from '../context/ConnectedAuthContext'
@@ -88,17 +89,17 @@ export default function ReviewQueue() {
           <div className="flex w-fit items-center gap-1 rounded-[11px] p-1" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
             {([{ id: 'pending', label: 'Pending', count: pending.length }, { id: 'verified', label: 'Verified', count: verified.length }] as const).map(item => <button key={item.id} onClick={() => setTab(item.id)} className="flex items-center gap-2 rounded-[8px] px-3.5 py-2 text-[12px] font-semibold" style={{ background: tab === item.id ? 'var(--c-page)' : 'transparent', color: tab === item.id ? 'var(--c-text)' : 'var(--c-muted)', border: tab === item.id ? '1px solid var(--c-border)' : '1px solid transparent' }}>{item.label}<span className="rounded-full px-1.5 py-0.5 text-[10px]" style={{ background: item.id === 'pending' ? 'rgba(217,119,6,0.12)' : 'rgba(22,163,74,0.12)', color: item.id === 'pending' ? '#B45309' : '#16A34A' }}>{item.count}</span></button>)}
           </div>
-          <div className="relative w-full max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-muted)' }} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search real events or evidence…" className="w-full rounded-[10px] py-2.5 pl-9 pr-3 text-[13px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none' }} /></div>
+          <div className="relative w-full max-w-sm"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-muted)' }} /><input value={search} onChange={e => setSearch(e.target.value)} aria-label="Search field events" placeholder="Search real events or evidence…" className="w-full rounded-[10px] py-2.5 pl-9 pr-3 text-[13px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none' }} /></div>
         </div>
-        <div className="flex items-start gap-2.5 rounded-[11px] px-4 py-3" style={{ background: 'var(--c-brand-tint)', border: '1px solid rgba(244,111,41,0.20)' }}><ShieldCheck size={16} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} /><p className="text-[12px] leading-5" style={{ color: 'var(--c-muted)' }}>Activities are not AI-ranked in this phase. The human reviewer chooses an eligible L6 activity; backend checks remain authoritative.</p></div>
+        <div className="flex items-start gap-2.5 rounded-[11px] px-4 py-3" style={{ background: 'var(--c-brand-tint)', border: '1px solid rgba(244,111,41,0.20)' }}><ShieldCheck size={16} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} /><p className="text-[12px] leading-5" style={{ color: 'var(--c-muted)' }}>Manual activity selection. An authorized human verifies the L6 activity and date; backend checks remain authoritative. AI matching is not enabled.</p></div>
         {error && <p role="alert" className="mt-3 rounded-[10px] px-3 py-2 text-[12px] text-red-700" style={{ background: 'rgba(220,38,38,0.08)' }}>{error}</p>}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
         <div className="overflow-hidden rounded-[16px]" style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)' }}>
           <div className="grid grid-cols-[minmax(260px,1fr)_130px_130px_100px_120px] gap-4 px-5 py-3 text-[10px] font-bold uppercase" style={{ background: 'var(--c-page)', color: 'var(--c-subtle)', letterSpacing: '0.08em', borderBottom: '1px solid var(--c-border)' }}><span>Evidence</span><span>Event type</span><span>Actual date</span><span>Revision</span><span>Status</span></div>
-          {loading && workspace.scope !== scope ? <div className="py-16 text-center text-[13px]" style={{ color: 'var(--c-muted)' }}>Loading connected events…</div>
-          : visible.length === 0 ? <div className="py-16 text-center"><p className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>{search ? 'No events match this search.' : tab === 'pending' ? 'No pending events.' : 'No verified events.'}</p><p className="mt-1 text-[12px]" style={{ color: 'var(--c-muted)' }}>{tab === 'pending' ? 'New manual captures will appear here for human review.' : 'Verified events remain available as read-only evidence.'}</p></div>
+          {loading && workspace.scope !== scope ? <WorkflowLoading>Loading field events…</WorkflowLoading>
+          : visible.length === 0 ? <WorkflowEmpty kind={search ? 'search' : 'review'} title={search ? 'No events match this search' : tab === 'pending' ? 'No pending events' : 'No verified events'}>{tab === 'pending' ? 'New manual captures appear here for human review.' : 'Verified events remain available as read-only evidence.'}</WorkflowEmpty>
           : visible.map(event => <EventRow key={`${event.id}:${event.revision}`} event={event} onOpen={() => setOpenEventId(event.id)} />)}
         </div>
       </div>

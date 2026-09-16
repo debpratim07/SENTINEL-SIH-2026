@@ -1,3 +1,5 @@
+import { HeroFlow } from '../../components/industrial-flow/HeroFlow'
+import { LoaderArtwork } from '../../components/industrial-flow/PipelineLoader'
 import { useEffect, useState } from 'react'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 import { useConnectedAuth } from '../../context/ConnectedAuthContext'
@@ -115,7 +117,9 @@ export default function LoginPage({ initialError = '' }: Props) {
         }}
       />
 
-      <div className="auth-login-wrap" style={{ width: '100%', maxWidth: 460, padding: '0 24px', position: 'relative', zIndex: 1 }}>
+      <div className="auth-experience">
+      <section className="auth-story" aria-label="SENTINEL execution workflow"><p className="auth-story-eyebrow">EXECUTION IN FLOW</p><h2>Field evidence. <br/>Human verification. <br/><span>Schedule truth.</span></h2><HeroFlow title="Field observations moving through a controlled verification workflow"/><p>Capture the original observation. Let an authorized human verify the L6 activity and date. Keep the execution record traceable.</p><div className="auth-story-foot">CAPTURE <span>→</span> REVIEW <span>→</span> VERIFY <span>→</span> TRACE</div></section>
+      <div className="auth-login-wrap" style={{ width: '100%', maxWidth: 480, padding: '0 24px', position: 'relative', zIndex: 1 }}>
         {/* Logo + tagline */}
         <div className="mb-7 flex flex-col items-center gap-3" style={{ color: 'var(--c-text)' }}>
           <SentinelFullLogo />
@@ -142,10 +146,11 @@ export default function LoginPage({ initialError = '' }: Props) {
 
             <form onSubmit={handleSignIn} noValidate>
               <div className="mb-4">
-                <label className="mb-1.5 block text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>
+                <label htmlFor="login-email" className="mb-1.5 block text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>
                   Email
                 </label>
                 <input
+                  aria-invalid={!!error} aria-describedby={error ? 'login-error' : undefined} id="login-email"
                   type="email"
                   autoComplete="email"
                   value={email}
@@ -160,7 +165,7 @@ export default function LoginPage({ initialError = '' }: Props) {
 
               <div className="mb-5">
                 <div className="mb-1.5 flex items-center justify-between">
-                  <label className="text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>
+                  <label htmlFor="login-password" className="text-[12px] font-semibold" style={{ color: 'var(--c-text)' }}>
                     Password
                   </label>
                   <button
@@ -174,6 +179,7 @@ export default function LoginPage({ initialError = '' }: Props) {
                 </div>
                 <div className="relative">
                   <input
+                    aria-invalid={!!error} aria-describedby={error ? 'login-error' : undefined} id="login-password"
                     type={showPassword ? 'text' : 'password'}
                     autoComplete="current-password"
                     value={password}
@@ -200,7 +206,7 @@ export default function LoginPage({ initialError = '' }: Props) {
                 <div
                   className="mb-4 rounded-[8px] px-3 py-2.5 text-[12px]"
                   style={{ background: 'rgba(220,38,38,0.08)', border: '1px solid rgba(220,38,38,0.18)', color: '#DC2626' }}
-                  role="alert"
+                  id="login-error" role="alert"
                 >
                   {error}
                 </div>
@@ -218,10 +224,7 @@ export default function LoginPage({ initialError = '' }: Props) {
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,0.3)" strokeWidth="3" />
-                      <path d="M12 2a10 10 0 0 1 10 10" stroke="white" strokeWidth="3" strokeLinecap="round" />
-                    </svg>
+                    <LoaderArtwork className="button-loader"/>
                     Signing in...
                   </span>
                 ) : (
@@ -254,13 +257,14 @@ export default function LoginPage({ initialError = '' }: Props) {
               If an account exists for this email, a password recovery link has been sent. Open it on this device to continue securely.
             </p> : <form onSubmit={handleRecovery} noValidate>
               <p className="mb-5 text-[13px] leading-5" style={{ color: 'var(--c-muted)' }}>Enter your account email. SENTINEL will send a secure recovery link through Supabase Auth.</p>
-              <label className="mb-1.5 block text-[12px] font-semibold" style={{color:'var(--c-text)'}}>Email</label>
-              <input type="email" autoComplete="email" value={email} onChange={e=>{setEmail(e.target.value);setError('')}} placeholder="your@email.com" style={fieldStyle}/>
-              {error&&<div className="my-4 rounded-[8px] px-3 py-2.5 text-[12px]" role="alert" style={{background:'rgba(220,38,38,.08)',color:'#DC2626'}}>{error}</div>}
+              <label htmlFor="recovery-email" className="mb-1.5 block text-[12px] font-semibold" style={{color:'var(--c-text)'}}>Email</label>
+              <input aria-label="Recovery email" aria-invalid={!!error} aria-describedby={error ? 'recovery-error' : undefined} id="recovery-email" type="email" autoComplete="email" value={email} onChange={e=>{setEmail(e.target.value);setError('')}} placeholder="your@email.com" style={fieldStyle}/>
+              {error&&<div id="recovery-error" className="my-4 rounded-[8px] px-3 py-2.5 text-[12px]" role="alert" style={{background:'rgba(220,38,38,.08)',color:'#DC2626'}}>{error}</div>}
               <button type="submit" disabled={loading||!auth.configured} className="mt-5 w-full rounded-[10px] py-3 text-[14px] font-semibold text-white disabled:opacity-60" style={{background:'linear-gradient(135deg,#F46F29,#F59B4C)'}}>{loading?'Sending secure link…':'Send recovery link'}</button>
             </form>}
           </div>
         )}
+      </div>
       </div>
     </div>
   )

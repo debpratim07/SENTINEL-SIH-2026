@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '../../hooks/useDialogFocus'
 
 interface ModalProps {
   open: boolean
@@ -16,6 +17,8 @@ export default function Modal({
   zIndex = 60,
 }: ModalProps) {
   const [mounted, setMounted] = useState(open)
+  const panel = useRef<HTMLDivElement>(null)
+  useDialogFocus(panel, open, mounted, onClose)
 
   useEffect(() => {
     if (open) {
@@ -25,15 +28,6 @@ export default function Modal({
       return () => clearTimeout(t)
     }
   }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
 
   if (!mounted) return null
 
@@ -69,13 +63,18 @@ export default function Modal({
       {/* Content */}
       <div
         className="responsive-modal-content"
+        ref={panel}
+        tabIndex={-1}
+        data-open={open}
+        inert={!open}
+        aria-hidden={!open}
         role="dialog"
-        aria-modal="true"
+        aria-modal={open ? true : undefined}
         aria-label={ariaLabel}
         onClick={(e) => e.stopPropagation()}
         style={{
           position: 'relative',
-          zIndex: 1,
+          zIndex: zIndex + 1,
           transform: open ? 'scale(1) translateY(0)' : 'scale(0.96) translateY(8px)',
           transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)',
         }}

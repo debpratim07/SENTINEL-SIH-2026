@@ -7,6 +7,7 @@ import {
   validateApprovalDraft, type PendingApprovalRequest,
 } from '../../lib/real-review'
 import Drawer from '../ui/Drawer'
+import { CompletionFlow } from '../industrial-flow/CompletionFlow'
 
 interface Props {
   open: boolean
@@ -83,7 +84,7 @@ export default function ReviewMatchDrawer({
 
   return (
     <Drawer open={open} onClose={handleClose} width={720} aria-label="Human event review">
-      <div className="flex h-full flex-col">
+      <div className="workflow-drawer flex h-full flex-col">
         <div className="flex shrink-0 items-start justify-between px-7 pb-5 pt-7" style={{ borderBottom: '1px solid var(--c-border)' }}>
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -101,7 +102,7 @@ export default function ReviewMatchDrawer({
         <div className="flex-1 overflow-y-auto px-7 py-6">
           {!event ? <p style={{ color: 'var(--c-muted)' }}>No event selected.</p> : decisionId ? (
             <div className="flex min-h-full flex-col items-center justify-center py-10 text-center" aria-live="polite">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: 'rgba(22,163,74,0.12)' }}><CheckCircle2 size={32} style={{ color: '#16A34A' }} /></div>
+              <CompletionFlow className="workflow-completion" title="Operation confirmed"/>
               <h3 className="text-[22px] font-bold" style={{ color: 'var(--c-text)' }}>Human verification complete</h3>
               <p className="mt-2 max-w-md text-[14px] leading-6" style={{ color: 'var(--c-muted)' }}>
                 The {readable(event.event_type)} actual for {selectedActivity?.external_id} was persisted as {event.actual_date}. The event is verified and the review is recorded in audit history.
@@ -122,7 +123,7 @@ export default function ReviewMatchDrawer({
                 </div>
                 <div className="mt-5"><p className="text-[11px] font-bold uppercase" style={{ color: 'var(--c-subtle)', letterSpacing: '0.08em' }}>Raw field update</p>
                   <p className="mt-2 whitespace-pre-wrap text-[13px] leading-6" style={{ color: 'var(--c-text)' }}>{event.report?.raw_text ?? 'Original report unavailable.'}</p></div>
-                <div className="mt-5 rounded-[12px] p-4" style={{ background: 'rgba(244,111,41,0.07)', border: '1px solid rgba(244,111,41,0.22)' }}>
+                <div className="evidence-quote mt-5 rounded-[12px] p-4" style={{ background: 'rgba(244,111,41,0.07)', border: '1px solid rgba(244,111,41,0.22)' }}>
                   <div className="flex items-start gap-3"><Quote size={17} className="mt-0.5 shrink-0" style={{ color: '#F46F29' }} /><div><p className="text-[11px] font-bold uppercase" style={{ color: '#F46F29', letterSpacing: '0.08em' }}>Exact source quote</p><blockquote className="mt-2 whitespace-pre-wrap text-[13px] font-medium leading-6" style={{ color: 'var(--c-text)' }}>{event.source_quote}</blockquote></div></div>
                 </div>
               </section>
@@ -131,7 +132,7 @@ export default function ReviewMatchDrawer({
               : !canReview ? <div role="note" className="rounded-[12px] p-4 text-[13px]" style={{ background: 'var(--c-page)', color: 'var(--c-muted)', border: '1px solid var(--c-border)' }}>Your project role has read-only access to this review. A planner, project controls reviewer, or administrator must verify it.</div>
               : <form id="connected-human-review" onSubmit={submit} className="flex flex-col gap-5">
                   <section><div className="mb-2 flex items-end justify-between"><div><h3 className="text-[14px] font-semibold" style={{ color: 'var(--c-text)' }}>Select the matching L6 activity</h3><p className="mt-1 text-[12px]" style={{ color: 'var(--c-muted)' }}>Manual selection from {eligible.length} eligible connected activities. No AI ranking is applied.</p></div></div>
-                    <div className="relative mb-3"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-muted)' }} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search ID, activity, discipline, area or equipment…" className="w-full rounded-[10px] py-2.5 pl-9 pr-3 text-[13px]" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none' }} /></div>
+                    <div className="relative mb-3"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--c-muted)' }} /><input value={search} onChange={e => setSearch(e.target.value)} aria-label="Search eligible L6 activities" placeholder="Search ID, activity, discipline, area or equipment…" className="w-full rounded-[10px] py-2.5 pl-9 pr-3 text-[13px]" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)', color: 'var(--c-text)', outline: 'none' }} /></div>
                     <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
                       {visibleActivities.length === 0 && <p className="rounded-[10px] p-4 text-[12px]" style={{ background: 'var(--c-page)', color: 'var(--c-muted)' }}>No eligible L6 activities match this search.</p>}
                       {visibleActivities.map(activity => { const actual = actualFor(activity.id, actuals); const selected = activity.id === activityId; return <label key={activity.id} className="cursor-pointer rounded-[12px] p-4" style={{ background: selected ? 'rgba(244,111,41,0.07)' : 'var(--c-card)', border: selected ? '1.5px solid rgba(244,111,41,0.45)' : '1px solid var(--c-border)' }}>

@@ -12,6 +12,7 @@ import {
 } from '../../lib/manual-capture'
 import type { ProposedEvent } from '../../lib/connected-types'
 import Drawer from '../ui/Drawer'
+import { CompletionFlow } from '../industrial-flow/CompletionFlow'
 
 interface Props { open: boolean; onClose: () => void }
 
@@ -89,7 +90,7 @@ export default function LogWithSentinelDrawer({ open, onClose }: Props) {
 
   return (
     <Drawer open={open} onClose={handleClose} width={620} aria-label="Manual progress capture">
-      <div className="flex h-full flex-col">
+      <div className="workflow-drawer flex h-full flex-col">
         <div className="flex shrink-0 items-start justify-between px-7 pb-5 pt-7" style={{ borderBottom: '1px solid var(--c-border)' }}>
           <div>
             <div className="mb-2 flex items-center gap-2">
@@ -111,9 +112,7 @@ export default function LogWithSentinelDrawer({ open, onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-7 py-6">
           {savedEventId ? (
             <div className="flex min-h-full flex-col items-center justify-center py-10 text-center" aria-live="polite">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full" style={{ background: 'rgba(22,163,74,0.12)' }}>
-                <CheckCircle2 size={32} strokeWidth={1.8} style={{ color: '#16A34A' }} />
-              </div>
+              <CompletionFlow className="workflow-completion" title="Operation confirmed"/>
               <h3 className="text-[22px] font-bold" style={{ color: 'var(--c-text)' }}>Saved to {access.project?.name}</h3>
               <p className="mt-2 max-w-md text-[14px] leading-6" style={{ color: 'var(--c-muted)' }}>
                 SENTINEL created a proposed event and preserved your original field update and source quote.
