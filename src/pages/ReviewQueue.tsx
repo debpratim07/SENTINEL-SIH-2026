@@ -75,7 +75,7 @@ export default function ReviewQueue() {
   const canReview = canReviewActual(access.role)
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="review-page flex h-full flex-col overflow-hidden">
       <div className="shrink-0 px-8 pb-4 pt-7">
         <div className="mb-5 flex items-start justify-between gap-5">
           <div><div className="mb-2 flex items-center gap-2"><span className="rounded-full px-2 py-1 text-[10px] font-bold uppercase" style={{ background: 'rgba(22,163,74,0.12)', color: '#16A34A', letterSpacing: '0.07em' }}>Connected</span><span className="text-[11px]" style={{ color: 'var(--c-muted)' }}>Human verification</span></div>

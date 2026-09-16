@@ -55,6 +55,116 @@ html, body, #root {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body { margin: 0; min-width: 320px; }
+button, input, select, textarea { font: inherit; }
+button { min-height: 36px; }
+.mobile-nav-trigger, .mobile-sidebar-backdrop { display: none; }
+.auth-page { min-height: 100dvh; display: grid; place-items: center; padding: 24px; background: var(--c-page); }
+.auth-card { width: min(100%, 440px); padding: clamp(24px, 5vw, 36px); border: 1px solid var(--c-border); border-radius: 18px; background: var(--c-card); box-shadow: var(--c-shadow-elevated); }
+.auth-card h1 { margin: 8px 0; font-size: clamp(1.35rem, 3vw, 1.65rem); }
+.auth-card p { color: var(--c-muted); font-size: 13px; line-height: 1.6; }
+.auth-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: #F46F29; background: var(--c-brand-tint); }
+.auth-eyebrow { margin-top: 18px; color: #F46F29 !important; font-size: 10px !important; font-weight: 800; letter-spacing: .1em; }
+.auth-form { display: grid; gap: 16px; margin-top: 18px; }
+.auth-form label { display: grid; gap: 6px; color: var(--c-text); font-size: 12px; font-weight: 650; }
+.auth-form input { width: 100%; min-height: 44px; padding: 0 13px; border: 1px solid var(--c-border); border-radius: 10px; background: var(--c-page); color: var(--c-text); box-sizing: border-box; }
+.auth-password { position: relative; }
+.auth-password input { padding-right: 48px; }
+.auth-password button { position: absolute; right: 4px; top: 4px; width: 38px; display: grid; place-items: center; color: var(--c-muted); }
+.auth-primary, .auth-secondary { min-height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 10px; padding: 0 16px; text-align: center; font-size: 13px; font-weight: 700; text-decoration: none; }
+.auth-primary { color: white; background: linear-gradient(135deg,#F46F29,#F59B4C); }
+.auth-secondary { color: var(--c-muted); border: 1px solid var(--c-border); }
+.auth-actions { display: grid; gap: 10px; margin-top: 20px; }
+.auth-error { color: #DC2626 !important; }
+
+@media (max-width: 1023px) {
+  .mobile-nav-trigger { display: grid; width: 42px; height: 42px; min-height: 42px; flex: 0 0 auto; place-items: center; border-radius: 10px; color: var(--c-text); background: var(--c-card); border: 1px solid var(--c-border); }
+  .app-sidebar { position: fixed !important; inset: 0 auto 0 0; z-index: 80; width: min(86vw, 300px) !important; min-width: min(86vw, 300px) !important; transform: translateX(-105%); transition: transform 220ms ease-out !important; }
+  .app-sidebar.is-mobile-open { transform: translateX(0); }
+  .mobile-sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.42); backdrop-filter: blur(2px); }
+  body.nav-open { overflow: hidden; }
+  .app-header { padding-inline: clamp(12px, 3vw, 22px) !important; }
+  .dashboard-page, .admin-page { padding: clamp(18px, 3vw, 28px) !important; }
+  .schedule-page > header, .actuals-page > header, .audit-page > header { padding-inline: clamp(16px, 3vw, 24px) !important; }
+  .detail-page { padding-inline: clamp(16px, 3vw, 26px) !important; }
+}
+
+@media (max-width: 767px) {
+  .app-shell { height: 100dvh !important; }
+  .app-header { height: 58px !important; gap: 8px !important; }
+  .app-header > div:first-of-type { max-width: calc(100vw - 150px); }
+  .dashboard-page { padding: 18px 14px 32px !important; }
+  .dashboard-page > div:first-child { align-items: stretch !important; flex-direction: column; }
+  .dashboard-page > div:first-child button { width: 100%; justify-content: center; min-height: 44px; }
+  .dashboard-page section.grid { grid-template-columns: 1fr !important; }
+  .responsive-modal { padding: 12px !important; align-items: flex-end !important; }
+  .responsive-modal-content { width: 100%; max-height: calc(100dvh - 24px); overflow: auto; }
+  .capture-chooser { width: 100% !important; border-radius: 18px !important; }
+  .responsive-drawer-panel { width: 100vw !important; max-width: none !important; border-left: 0 !important; }
+  .responsive-drawer-panel > div:first-child, .responsive-drawer-panel > header { padding-inline: 18px !important; }
+  .responsive-drawer-panel > div:nth-last-child(2), .responsive-drawer-panel > div.flex-1 { padding: 18px !important; }
+  .responsive-drawer-panel > div:last-child { padding: 12px 16px max(12px, env(safe-area-inset-bottom)) !important; flex-wrap: wrap; }
+  .responsive-drawer-panel > div:last-child button { flex: 1 1 140px; min-height: 44px; }
+  .responsive-drawer-panel .grid-cols-2 { grid-template-columns: 1fr !important; }
+  .review-page { overflow-y: auto !important; }
+  .review-page > div:first-child { padding: 18px 14px 12px !important; }
+  .review-page > div:first-child > div { align-items: stretch !important; flex-direction: column; }
+  .review-page > div:first-child input { width: 100% !important; }
+  .review-page > div:last-of-type { padding: 0 14px 28px !important; overflow: visible !important; }
+  .review-page > div:last-of-type > div > div:first-child { display: none !important; }
+  .review-page > div:last-of-type button.grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; padding: 16px !important; }
+  .review-page > div:last-of-type button.grid > span:first-child { grid-column: 1 / -1; }
+  .schedule-page, .actuals-page, .audit-page { overflow-y: auto !important; }
+  .schedule-page > header, .actuals-page > header, .audit-page > header { padding: 16px 14px 0 !important; }
+  .schedule-page > header > div:first-child, .actuals-page > header > div:first-child, .audit-page > header > div:first-child { flex-direction: column; align-items: stretch !important; }
+  .schedule-page > header input, .audit-page > header input { width: 100% !important; }
+  .schedule-page > header > div:first-child > div:last-child { flex-wrap: wrap; }
+  .schedule-page > header > div:first-child > div:last-child > div { flex: 1 1 170px; }
+  .schedule-page > header > div:first-child > div:last-child input { width: 100% !important; }
+  .schedule-page table { min-width: 920px !important; }
+  .schedule-page table th:nth-child(3), .schedule-page table td:nth-child(3) { display: none; }
+  .actuals-page > div:last-child, .audit-page > div:last-child, .admin-page section > div.overflow-x-auto { overflow: visible !important; }
+  .actuals-page table, .audit-page table, .admin-page table { min-width: 0 !important; display: block; }
+  .actuals-page thead, .audit-page thead, .admin-page thead { display: none; }
+  .actuals-page tbody, .audit-page tbody, .admin-page tbody { display: grid; gap: 12px; padding: 14px; }
+  .actuals-page tr, .audit-page tbody tr, .admin-page tbody tr { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; border: 1px solid var(--c-border) !important; border-radius: 14px; background: var(--c-card); }
+  .actuals-page td, .audit-page td, .admin-page td { display: block; padding: 0 !important; min-width: 0; overflow-wrap: anywhere; }
+  .actuals-page td:first-child, .audit-page td:nth-child(3), .audit-page td:nth-child(4), .audit-page td:nth-child(5), .admin-page td:first-child, .admin-page td:last-child { grid-column: 1 / -1; }
+  .actuals-page td::before, .audit-page td::before, .admin-page td::before { display: block; margin-bottom: 4px; color: var(--c-subtle); font-size: 9px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+  .actuals-page td:nth-child(1)::before { content:'Activity'; } .actuals-page td:nth-child(2)::before { content:'Level'; } .actuals-page td:nth-child(3)::before { content:'Discipline / Area'; } .actuals-page td:nth-child(4)::before { content:'Actual start'; } .actuals-page td:nth-child(5)::before { content:'Actual finish'; } .actuals-page td:nth-child(6)::before { content:'Status'; }
+  .audit-page td:nth-child(1)::before { content:'Timestamp'; } .audit-page td:nth-child(2)::before { content:'Action'; } .audit-page td:nth-child(3)::before { content:'Record ID'; } .audit-page td:nth-child(4)::before { content:'Actor ID'; } .audit-page td:nth-child(5)::before { content:'Persisted detail'; }
+  .admin-page { padding: 18px 14px 32px !important; }
+  .admin-page section > div:first-child { align-items: stretch !important; }
+  .admin-page section > div:first-child > div { max-width: none !important; }
+  .admin-page td:nth-child(1)::before { content:'Account'; } .admin-page td:nth-child(2)::before { content:'Role'; } .admin-page td:nth-child(3)::before { content:'Access'; } .admin-page td:nth-child(4)::before { content:'Actions'; }
+  .admin-page td select { width: 100%; min-height: 44px; }
+  .admin-page td:last-child > div { flex-wrap: wrap; gap: 8px !important; }
+  .admin-page td:last-child button { flex: 1 1 120px; min-height: 42px; border: 1px solid var(--c-border); border-radius: 8px; padding: 6px; justify-content: center; }
+  .audit-page > header > div:nth-child(2) { gap: 10px !important; }
+  .audit-page > header > div:nth-child(2) > * { flex: 1 1 140px; }
+  .audit-page aside { max-width: none !important; }
+  .detail-page { padding: 18px 14px 36px !important; }
+  .detail-page > header { flex-direction: column; }
+  .detail-page > div:last-child { align-items: flex-start !important; flex-direction: column; }
+  .auth-login-page { min-height: 100dvh !important; overflow-y: auto !important; padding-block: 24px; }
+  .auth-login-wrap { padding-inline: 14px !important; }
+  .auth-login-card { padding: 24px 20px !important; }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .dashboard-page section.grid { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
+  .responsive-drawer-panel { width: min(86vw, 720px) !important; }
+}
+
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .dashboard-page section.grid { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
+}
+
+@media (min-width: 1440px) {
+  #main-content > div, #main-content > section { max-width: 1600px; width: 100%; margin-inline: auto; }
+  .dashboard-page { padding-inline: clamp(36px, 4vw, 72px) !important; }
+}
+
 /* ── Scrollbars ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

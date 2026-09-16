@@ -39,6 +39,7 @@ export default function Modal({
 
   return (
     <div
+      className="responsive-modal"
       style={{
         position: 'fixed',
         inset: 0,
@@ -67,6 +68,7 @@ export default function Modal({
 
       {/* Content */}
       <div
+        className="responsive-modal-content"
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}

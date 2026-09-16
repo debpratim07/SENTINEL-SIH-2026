@@ -6,6 +6,7 @@ import './index.css'
 import { authCallbackRoute } from './lib/auth-callback'
 import { ConnectedAuthProvider } from './context/ConnectedAuthContext'
 import { ConnectedProjectProvider } from './context/ConnectedProjectContext'
+import ResetPasswordPage from './pages/auth/ResetPasswordPage'
 
 const callback = authCallbackRoute(new URL(window.location.href))
 if (callback.pathname !== window.location.pathname) {
@@ -16,7 +17,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ConnectedAuthProvider>
       <ConnectedProjectProvider>
-        {callback.pathname === '/workspace'
+        {callback.pathname === '/reset-password'
+          ? <ResetPasswordPage callbackError={callback.error} />
+          : callback.pathname === '/workspace'
           ? <ConnectedWorkspace authError={callback.error} />
           : <App authError={callback.error} />}
       </ConnectedProjectProvider>

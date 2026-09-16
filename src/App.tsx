@@ -21,15 +21,17 @@ import { PRIMARY_CONNECTED_ROUTES } from './lib/real-admin'
 function AppShell(){
   const auth=useConnectedAuth();const access=useConnectedProject();const [dark,setDark]=useState(false);const [shellError,setShellError]=useState('')
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);const [activeNav,setActiveNav]=useState('dashboard');const [profileOpen,setProfileOpen]=useState(false)
+  const [mobileNavigationOpen,setMobileNavigationOpen]=useState(false)
   const [captureChooserOpen,setCaptureChooserOpen]=useState(false);const [logDrawerOpen,setLogDrawerOpen]=useState(false)
   const [selectedActivityId,setSelectedActivityId]=useState<string|null>(null);const [activeActualId,setActiveActualId]=useState<string|null>(null)
   useEffect(()=>{ document.documentElement.classList.toggle('dark',dark) },[dark])
+  useEffect(()=>{document.body.classList.toggle('nav-open',mobileNavigationOpen);return()=>document.body.classList.remove('nav-open')},[mobileNavigationOpen])
   function navigate(nav:string){const allowed=(PRIMARY_CONNECTED_ROUTES as readonly string[]).includes(nav)||nav==='profile';setActiveNav(allowed&&shellNavVisible(access.role,nav)?nav:'dashboard');if(nav!=='schedule')setSelectedActivityId(null);if(nav!=='actuals')setActiveActualId(null)}
   function profileNavigate(nav:string){setProfileOpen(false);if(nav==='__logout'){void auth.signOut().catch(cause=>setShellError(cause instanceof Error?cause.message:'Unable to sign out.'));return}navigate(nav)}
-  const header=<Header dark={dark} onToggleDark={()=>setDark(value=>!value)} onOpenProfile={()=>setProfileOpen(value=>!value)}/>
-  const sidebar=<Sidebar collapsed={sidebarCollapsed} onToggle={()=>setSidebarCollapsed(value=>!value)} activeNav={activeNav} onNavChange={navigate} onCaptureProgress={()=>setCaptureChooserOpen(true)}/>
-  if(activeNav==='profile')return <div className="flex h-screen overflow-hidden" style={{background:'var(--c-page)'}}>{sidebar}<div className="flex min-w-0 flex-1 flex-col overflow-hidden">{header}<ProfilePage onBack={()=>navigate('dashboard')} dark={dark} onToggleDark={()=>setDark(value=>!value)}/></div><ProfileDropdown open={profileOpen} onClose={()=>setProfileOpen(false)} onNavigate={profileNavigate} dark={dark} onToggleDark={()=>setDark(value=>!value)}/></div>
-  return <div className="flex h-screen overflow-hidden" style={{background:'var(--c-page)'}}>{sidebar}<div className="flex min-w-0 flex-1 flex-col overflow-hidden">{shellError&&<p role="alert" className="px-6 py-2 text-[13px] text-red-600">{shellError}</p>}{header}<main className="flex min-h-0 flex-1 flex-col overflow-hidden" id="main-content">
+  const header=<Header dark={dark} onToggleDark={()=>setDark(value=>!value)} onOpenProfile={()=>setProfileOpen(value=>!value)} onOpenNavigation={()=>setMobileNavigationOpen(true)}/>
+  const sidebar=<Sidebar collapsed={sidebarCollapsed} onToggle={()=>setSidebarCollapsed(value=>!value)} activeNav={activeNav} onNavChange={navigate} onCaptureProgress={()=>setCaptureChooserOpen(true)} mobileOpen={mobileNavigationOpen} onMobileClose={()=>setMobileNavigationOpen(false)}/>
+  if(activeNav==='profile')return <div className="app-shell flex h-screen overflow-hidden" style={{background:'var(--c-page)'}}>{sidebar}<div className="flex min-w-0 flex-1 flex-col overflow-hidden">{header}<ProfilePage onBack={()=>navigate('dashboard')} dark={dark} onToggleDark={()=>setDark(value=>!value)}/></div><ProfileDropdown open={profileOpen} onClose={()=>setProfileOpen(false)} onNavigate={profileNavigate} dark={dark} onToggleDark={()=>setDark(value=>!value)}/></div>
+  return <div className="app-shell flex h-screen overflow-hidden" style={{background:'var(--c-page)'}}>{sidebar}<div className="flex min-w-0 flex-1 flex-col overflow-hidden">{shellError&&<p role="alert" className="px-6 py-2 text-[13px] text-red-600">{shellError}</p>}{header}<main className="flex min-h-0 flex-1 flex-col overflow-hidden" id="main-content">
     {activeNav==='dashboard'&&<div className="h-full overflow-auto"><Dashboard onCaptureProgress={()=>setCaptureChooserOpen(true)} onNavigate={navigate}/></div>}
     {activeNav==='review-queue'&&<ReviewQueue/>}
     {activeNav==='schedule'&&!selectedActivityId&&<SchedulePage onSelectActivity={setSelectedActivityId}/>}

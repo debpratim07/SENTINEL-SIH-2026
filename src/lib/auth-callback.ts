@@ -9,6 +9,10 @@ export function authCallbackRoute(url: URL): { pathname: string; error: string }
     url.searchParams.has('error') || url.searchParams.has('error_code')
   return {
     pathname: url.pathname === '/' && hasCallback ? '/' : url.pathname,
-    error: failed ? 'This confirmation link is invalid, expired or already used. If you have already confirmed your email, sign in below.' : '',
+    error: failed
+      ? url.pathname === '/reset-password'
+        ? 'This password-reset link is invalid, expired, or has already been used.'
+        : 'This confirmation link is invalid, expired or already used. If you have already confirmed your email, sign in below.'
+      : '',
   }
 }

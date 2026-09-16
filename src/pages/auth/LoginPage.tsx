@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Eye, EyeOff, ArrowLeft } from 'lucide-react'
 import { useConnectedAuth } from '../../context/ConnectedAuthContext'
+import { validateRecoveryEmail } from '../../lib/auth-recovery'
 
 interface Props {
   initialError?: string
@@ -45,6 +46,11 @@ export default function LoginPage({ initialError = '' }: Props) {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(initialError)
+  const [recoverySent, setRecoverySent] = useState(false)
+
+  useEffect(() => {
+    if (new URL(window.location.href).searchParams.get('recover') === '1') setView('forgot')
+  }, [])
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault()
@@ -64,6 +70,18 @@ export default function LoginPage({ initialError = '' }: Props) {
     }
   }
 
+  async function handleRecovery(e: React.FormEvent) {
+    e.preventDefault(); setError('')
+    if (!validateRecoveryEmail(email)) { setError('Enter a valid email address.'); return }
+    setLoading(true)
+    try {
+      await auth.requestPasswordReset(email.trim().toLowerCase())
+      setRecoverySent(true)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to request password recovery. Please try again.')
+    } finally { setLoading(false) }
+  }
+
   const fieldStyle = {
     width: '100%',
     height: 44,
@@ -80,7 +98,7 @@ export default function LoginPage({ initialError = '' }: Props) {
 
   return (
     <div
-      className="flex min-h-screen items-center justify-center"
+      className="auth-login-page flex min-h-screen items-center justify-center"
       style={{ background: 'var(--c-page)', position: 'relative', overflow: 'hidden' }}
     >
       {/* Ambient warm glow — extremely restrained */}
@@ -97,7 +115,7 @@ export default function LoginPage({ initialError = '' }: Props) {
         }}
       />
 
-      <div style={{ width: '100%', maxWidth: 460, padding: '0 24px', position: 'relative', zIndex: 1 }}>
+      <div className="auth-login-wrap" style={{ width: '100%', maxWidth: 460, padding: '0 24px', position: 'relative', zIndex: 1 }}>
         {/* Logo + tagline */}
         <div className="mb-7 flex flex-col items-center gap-3" style={{ color: 'var(--c-text)' }}>
           <SentinelFullLogo />
@@ -108,7 +126,7 @@ export default function LoginPage({ initialError = '' }: Props) {
 
         {view === 'login' ? (
           <div
-            className="rounded-[18px] p-9"
+            className="auth-login-card rounded-[18px] p-9"
             style={{
               background: 'var(--c-card)',
               border: '1px solid var(--c-border)',
@@ -218,11 +236,11 @@ export default function LoginPage({ initialError = '' }: Props) {
           </div>
         ) : (
           <div
-            className="rounded-[18px] p-8"
+            className="auth-login-card rounded-[18px] p-8"
             style={{ background: 'var(--c-card)', border: '1px solid var(--c-border)', boxShadow: '0 8px 40px rgba(0,0,0,0.10)' }}
           >
             <button
-              onClick={() => setView('login')}
+              onClick={() => { setView('login'); setRecoverySent(false); setError(''); window.history.replaceState(null,'','/') }}
               className="mb-5 flex items-center gap-1.5 text-[13px] hover:opacity-70"
               style={{ color: 'var(--c-muted)' }}
             >
@@ -230,11 +248,17 @@ export default function LoginPage({ initialError = '' }: Props) {
               Back to Sign In
             </button>
             <h1 className="mb-1.5 text-[20px] font-bold tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>
-              Password help
+              {recoverySent ? 'Check your email' : 'Reset your password'}
             </h1>
-            <p className="mb-6 text-[13px]" style={{ color: 'var(--c-muted)' }}>
-              Password recovery is not available in SENTINEL yet. Contact your project administrator for account help.
-            </p>
+            {recoverySent ? <p className="mb-2 text-[13px] leading-5" role="status" style={{ color: 'var(--c-muted)' }}>
+              If an account exists for this email, a password recovery link has been sent. Open it on this device to continue securely.
+            </p> : <form onSubmit={handleRecovery} noValidate>
+              <p className="mb-5 text-[13px] leading-5" style={{ color: 'var(--c-muted)' }}>Enter your account email. SENTINEL will send a secure recovery link through Supabase Auth.</p>
+              <label className="mb-1.5 block text-[12px] font-semibold" style={{color:'var(--c-text)'}}>Email</label>
+              <input type="email" autoComplete="email" value={email} onChange={e=>{setEmail(e.target.value);setError('')}} placeholder="your@email.com" style={fieldStyle}/>
+              {error&&<div className="my-4 rounded-[8px] px-3 py-2.5 text-[12px]" role="alert" style={{background:'rgba(220,38,38,.08)',color:'#DC2626'}}>{error}</div>}
+              <button type="submit" disabled={loading||!auth.configured} className="mt-5 w-full rounded-[10px] py-3 text-[14px] font-semibold text-white disabled:opacity-60" style={{background:'linear-gradient(135deg,#F46F29,#F59B4C)'}}>{loading?'Sending secure link…':'Send recovery link'}</button>
+            </form>}
           </div>
         )}
       </div>

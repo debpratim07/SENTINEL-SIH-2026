@@ -17,7 +17,7 @@ export default function Dashboard({onCaptureProgress,onNavigate}:DashboardProps)
     ['Schedule activities',overview.activities],['Pending review',overview.pendingEvents],
     ['Verified events',overview.verifiedEvents],['Activities with actuals',overview.actualBearingActivities],
   ] as const : []
-  return <div className="min-h-full p-8">
+  return <div className="dashboard-page min-h-full p-8">
     <div className="mb-7 flex items-start justify-between gap-4">
       <div><p className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{color:'#F46F29'}}>Connected project</p>
         <h1 className="mt-1 text-[26px] font-bold tracking-[-0.02em]" style={{color:'var(--c-text)'}}>{access.project?.name}</h1>

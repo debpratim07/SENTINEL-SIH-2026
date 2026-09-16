@@ -49,6 +49,7 @@ export default function Drawer({
     <>
       {/* Backdrop */}
       <div
+        className="responsive-drawer"
         aria-hidden="true"
         onClick={onClose}
         style={{
@@ -66,6 +67,7 @@ export default function Drawer({
 
       {/* Panel */}
       <div
+        className="responsive-drawer-panel"
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}

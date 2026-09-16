@@ -200,15 +200,38 @@ interface SidebarProps {
   activeNav: string
   onNavChange: (id: string) => void
   onCaptureProgress?: () => void
+  mobileOpen?: boolean
+  onMobileClose?: () => void
 }
 
-export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, onCaptureProgress }: SidebarProps) {
+export default function Sidebar({ collapsed: desktopCollapsed, onToggle, activeNav, onNavChange, onCaptureProgress, mobileOpen=false, onMobileClose }: SidebarProps) {
+  const collapsed = mobileOpen ? false : desktopCollapsed
+  const sidebarRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    if (!mobileOpen) return
+    const previous = document.activeElement as HTMLElement | null
+    const controls = () => [...(sidebarRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], select, input') ?? [])]
+    controls()[0]?.focus()
+    function keydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') { onMobileClose?.(); return }
+      if (event.key !== 'Tab') return
+      const items = controls(); const first = items[0]; const last = items.at(-1)
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }
+    window.addEventListener('keydown', keydown)
+    return () => { window.removeEventListener('keydown', keydown); previous?.focus() }
+  }, [mobileOpen, onMobileClose])
   const [projectOpen, setProjectOpen] = useState(false)
   const access = useConnectedProject()
   const showCapture = canCaptureProgress(access.role)
 
-  return (
+  return (<>
+    {mobileOpen&&<button className="mobile-sidebar-backdrop" aria-label="Close navigation" onClick={onMobileClose}/>}
     <aside
+      ref={sidebarRef}
+      id="primary-sidebar"
+      className={`app-sidebar ${mobileOpen?'is-mobile-open':''}`}
       aria-label="Primary navigation"
       style={{
         width: collapsed ? 72 : 248,
@@ -347,7 +370,7 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
               const navButton = (
                 <button
                   key={item.id}
-                  onClick={() => onNavChange(item.id)}
+                  onClick={() => { onNavChange(item.id); onMobileClose?.() }}
                   aria-current={isActive ? 'page' : undefined}
                   className="relative flex w-full items-center transition-colors duration-150"
                   style={{
@@ -416,7 +439,7 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
         {showCapture && (collapsed ? (
           <NavTooltip label="Capture Progress">
             <button
-              onClick={onCaptureProgress}
+              onClick={() => { onCaptureProgress?.(); onMobileClose?.() }}
               className="flex w-full items-center justify-center rounded-[10px] transition-all duration-[180ms] hover:opacity-90 active:scale-[0.99]"
               style={{
                 height: 42,
@@ -430,7 +453,7 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
           </NavTooltip>
         ) : (
           <button
-            onClick={onCaptureProgress}
+            onClick={() => { onCaptureProgress?.(); onMobileClose?.() }}
             className="flex w-full items-center justify-center gap-2 rounded-[10px] text-[13px] font-semibold text-white transition-all duration-[180ms] hover:scale-[1.01] hover:opacity-90 active:scale-[0.99]"
             style={{
               height: 42,
@@ -471,5 +494,6 @@ export default function Sidebar({ collapsed, onToggle, activeNav, onNavChange, o
         </div>
       </div>
     </aside>
+  </>
   )
 }

@@ -12,7 +12,7 @@ export default function CaptureChooser({ open, onClose, onManualCapture }: Captu
 
   return (
     <Modal open={open} onClose={onClose} aria-label="Capture Progress">
-      <div style={{ width: 480, background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 20, boxShadow: 'var(--c-shadow-elevated)', overflow: 'hidden' }}>
+      <div className="capture-chooser" style={{ width: 480, background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 20, boxShadow: 'var(--c-shadow-elevated)', overflow: 'hidden' }}>
         <div className="flex items-start justify-between" style={{ padding: '24px 24px 0' }}>
           <div>
             <h2 className="text-[20px] font-bold tracking-[-0.02em]" style={{ color: 'var(--c-text)' }}>Capture Progress</h2>
