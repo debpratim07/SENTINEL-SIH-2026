@@ -1,42 +1,28 @@
-import { ExecutionFlow, WorkflowLoading } from '../industrial-flow/WorkflowFeedback'
-import { CalendarDays, ClipboardCheck, ListChecks, PlusCircle, ScrollText } from 'lucide-react'
+import { AlertTriangle, CalendarClock, CircleGauge, ClipboardCheck, PlusCircle, TrendingDown } from 'lucide-react'
 import { useConnectedProject } from '../../context/ConnectedProjectContext'
 import { useConnectedWorkspace } from '../../hooks/useConnectedWorkspace'
+import { analyticsSummary, attentionItems, disciplinePerformance, progressSeries } from '../../lib/connected-analytics'
 import { canCaptureProgress } from '../../lib/manual-capture'
-import { connectedOverview } from '../../lib/real-admin'
-import { canViewAudit } from '../../lib/real-audit'
 import { roleLabel } from '../../lib/connected-shell'
+import { ExecutionFlow, WorkflowLoading } from '../industrial-flow/WorkflowFeedback'
 
 interface DashboardProps { onCaptureProgress?:()=>void; onNavigate?:(page:string)=>void }
-const icons=[CalendarDays,ListChecks,ClipboardCheck,ScrollText]
+const icons=[CircleGauge,TrendingDown,CalendarClock,CalendarClock,ClipboardCheck,AlertTriangle]
 
 export default function Dashboard({onCaptureProgress,onNavigate}:DashboardProps){
-  const access=useConnectedProject()
-  const state=useConnectedWorkspace(access.project!.id)
-  const overview=state.workspace ? connectedOverview(state.workspace,canViewAudit(access.role)) : null
-  const metrics=overview ? [
-    ['Schedule activities',overview.activities],['Pending review',overview.pendingEvents],
-    ['Verified events',overview.verifiedEvents],['Activities with actuals',overview.actualBearingActivities],
-  ] as const : []
-  return <div className="dashboard-page min-h-full p-8">
-    <div className="mb-7 flex items-start justify-between gap-4">
-      <div><p className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{color:'#F46F29'}}>Execution in flow</p>
-        <h1 className="mt-1 text-[26px] font-bold tracking-[-0.02em]" style={{color:'var(--c-text)'}}>{access.project?.name}</h1>
-        <p className="mt-1 text-[13px]" style={{color:'var(--c-muted)'}}>Current role: {roleLabel(access.role)}. Live counts for this project.</p></div>
-      {canCaptureProgress(access.role)&&<button onClick={onCaptureProgress} className="flex items-center gap-2 rounded-[10px] px-4 py-2 text-[13px] font-semibold text-white" style={{background:'linear-gradient(135deg,#F46F29,#F59B4C)'}}><PlusCircle size={15}/>Capture progress</button>}
-    </div>
-    {state.loading&&<WorkflowLoading>Loading project overview…</WorkflowLoading>}
-    {state.error&&<div role="alert" className="rounded-[12px] p-4 text-[13px] text-red-700" style={{background:'rgba(220,38,38,.08)'}}>{state.error} <button className="ml-2 font-semibold underline" onClick={()=>void state.refresh()}>Retry</button></div>}
-    {overview&&<>
-      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Connected project counts">
-        {metrics.map(([label,value],index)=>{const Icon=icons[index];return <button key={label} onClick={()=>onNavigate?.(index===0?'schedule':index===1?'review-queue':'actuals')} className="metric-card rounded-[14px] p-5 text-left" style={{background:'var(--c-card)',border:'1px solid var(--c-border)',boxShadow:'var(--c-shadow-card)'}}><Icon size={18} style={{color:'#F46F29'}}/><div className="mt-4 text-[28px] font-bold" style={{color:'var(--c-text)'}}>{value}</div><div className="text-[12px]" style={{color:'var(--c-muted)'}}>{label}</div></button>})}
-      </section>
-      <section className="mt-5 rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}>
-        <h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>From field evidence to schedule truth</h2>
-        <p className="mt-1 text-[12px]" style={{color:'var(--c-muted)'}}>Field updates remain pending until an authorized human selects an L6 activity and verifies the actual.</p>
-        <ExecutionFlow/><div className="mt-4 flex flex-wrap gap-2">{([['Review queue','review-queue'],['Schedule','schedule'],['Verified actuals','actuals'],...(canViewAudit(access.role)?[['Recent audit','audit-log']]:[])] as string[][]).map(([label,route])=><button key={route} onClick={()=>onNavigate?.(route)} className="rounded-[8px] px-3 py-2 text-[12px] font-semibold" style={{background:'var(--c-brand-tint)',color:'#F46F29'}}>{label}</button>)}</div>
-        {overview.recentAudit!==null&&<p className="mt-4 text-[11px]" style={{color:'var(--c-subtle)'}}>Recent audit records available: {overview.recentAudit}</p>}
-      </section>
-    </>}
+  const access=useConnectedProject();const state=useConnectedWorkspace(access.project!.id)
+  const asOf=new Date().toISOString().slice(0,10);const workspace=state.workspace
+  const summary=workspace?analyticsSummary(workspace,asOf):null
+  const series=workspace?progressSeries(workspace,asOf):[];const disciplines=workspace?disciplinePerformance(workspace,asOf):[];const attention=workspace?attentionItems(workspace,asOf).slice(0,6):[]
+  const metrics=summary?[
+    ['Plan',summary.plan===null?'—':`${summary.plan}%`,'performance'],['Execution',summary.actual===null?'—':`${summary.actual}%`,'performance'],['Started late',summary.startedLate,'performance'],['Finished late',summary.finishedLate,'performance'],['Needs review',summary.needsReview,'review-queue'],['Exceptions',summary.exceptions,'exceptions'],
+  ] as const:[]
+  return <div className="min-h-full p-5 sm:p-8"><header className="mb-7 flex flex-wrap items-start justify-between gap-4"><div><p className="text-[10px] font-bold uppercase tracking-[.12em]" style={{color:'#F46F29'}}>Execution in flow</p><h1 className="mt-1 text-[26px] font-bold" style={{color:'var(--c-text)'}}>{access.project?.name}</h1><p className="mt-1 text-[13px]" style={{color:'var(--c-muted)'}}>Verified project intelligence · {roleLabel(access.role)} · as of {asOf}</p></div>{canCaptureProgress(access.role)&&<button onClick={onCaptureProgress} className="flex items-center gap-2 rounded-[9px] px-4 py-2 text-[13px] font-semibold text-white" style={{background:'linear-gradient(135deg,#F46F29,#F59B4C)'}}><PlusCircle size={15}/>Capture progress</button>}</header>
+    {state.loading&&<WorkflowLoading>Loading connected project intelligence…</WorkflowLoading>}{state.error&&<div role="alert" className="rounded-[12px] p-4 text-[13px] text-red-700" style={{background:'rgba(220,38,38,.08)'}}>{state.error} <button className="ml-2 font-semibold underline" onClick={()=>void state.refresh()}>Retry</button></div>}
+    {summary&&workspace&&<><section className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6" aria-label="Project execution metrics">{metrics.map(([label,value,route],index)=>{const Icon=icons[index];return <button key={label} onClick={()=>onNavigate?.(route)} className="rounded-[14px] p-4 text-left" style={{background:'var(--c-card)',border:'1px solid var(--c-border)',boxShadow:'var(--c-shadow-card)'}}><Icon size={17} style={{color:'#F46F29'}}/><div className="mt-3 text-[25px] font-bold" style={{color:'var(--c-text)'}}>{value}</div><div className="text-[11px]" style={{color:'var(--c-muted)'}}>{label}</div></button>})}</section>
+      <section className="mt-5 grid gap-5 xl:grid-cols-[1.4fr_1fr]"><article className="rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}><div className="flex items-center justify-between"><div><h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>Plan vs verified execution</h2><p className="mt-1 text-[11px]" style={{color:'var(--c-muted)'}}>L6 planned and verified actual milestones; unknown dates are excluded.</p></div><button onClick={()=>onNavigate?.('performance')} className="text-[11px] font-semibold" style={{color:'#F46F29'}}>Open performance</button></div>{series.length?<><div className="mt-5 flex h-48 items-end gap-2" aria-label="Plan versus actual chart">{series.map(point=><div key={point.date} className="flex h-full min-w-0 flex-1 items-end justify-center gap-1" title={`${point.date}: plan ${point.plan}%, execution ${point.actual}%`}><div className="w-2 rounded-t" style={{height:`${Math.max(point.plan,2)}%`,background:'var(--c-border-strong)'}}/><div className="w-2 rounded-t" style={{height:`${Math.max(point.actual,2)}%`,background:'#F46F29'}}/></div>)}</div><div className="mt-2 flex justify-between text-[9px]" style={{color:'var(--c-subtle)'}}>{series.map(point=><span key={point.date}>{point.label}</span>)}</div></>:<p className="py-12 text-center text-[12px]" style={{color:'var(--c-muted)'}}>No planned milestones are available.</p>}</article>
+      <article className="rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}><h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>Discipline performance</h2><div className="mt-4 space-y-4">{disciplines.length?disciplines.map(item=><div key={item.name}><div className="flex justify-between text-[11px]"><span style={{color:'var(--c-text)'}}>{item.name} · {item.activities}</span><span style={{color:item.variance<0?'#DC2626':'#16A34A'}}>{item.variance}%</span></div><div className="mt-1 h-1.5 rounded-full" style={{background:'var(--c-border)'}}><div className="h-full rounded-full" style={{width:`${item.actual}%`,background:'#F46F29'}}/></div><div className="mt-1 text-[9px]" style={{color:'var(--c-subtle)'}}>Plan {item.plan}% · Execution {item.actual}%</div></div>):<p className="text-[12px]" style={{color:'var(--c-muted)'}}>No L6 discipline data is available.</p>}</div></article></section>
+      <section className="mt-5 grid gap-5 xl:grid-cols-[1.4fr_1fr]"><article className="rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}><div className="flex items-center justify-between"><h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>Needs attention</h2><span className="text-[11px]" style={{color:'var(--c-muted)'}}>{attention.length} shown</span></div>{attention.length?<div className="mt-3 divide-y" style={{borderColor:'var(--c-border)'}}>{attention.map(item=><button key={item.id} onClick={()=>onNavigate?.(item.route)} className="flex w-full items-start gap-3 py-3 text-left"><span className="mt-0.5 rounded px-2 py-0.5 text-[9px] font-bold" style={{background:'rgba(217,119,6,.1)',color:'#B45309'}}>{item.label}</span><span className="min-w-0 flex-1"><strong className="block truncate text-[12px]" style={{color:'var(--c-text)'}}>{item.entity}</strong><span className="text-[11px]" style={{color:'var(--c-muted)'}}>{item.reason}</span></span></button>)}</div>:<p className="mt-4 text-[12px]" style={{color:'var(--c-muted)'}}>No current attention conditions.</p>}</article><article className="rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}><h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>Recent execution</h2><div className="mt-3 space-y-3">{workspace.events.slice(0,5).map(event=><div key={event.id} className="border-l-2 pl-3" style={{borderColor:event.review_status==='verified'?'#16A34A':'#F46F29'}}><p className="line-clamp-2 text-[11px]" style={{color:'var(--c-text)'}}>{event.source_quote}</p><p className="mt-1 text-[10px]" style={{color:'var(--c-subtle)'}}>{event.event_type.replace('_',' ')} · {event.review_status} · {event.actual_date??'date unknown'}</p></div>)}{workspace.events.length===0&&<p className="text-[12px]" style={{color:'var(--c-muted)'}}>No execution evidence captured yet.</p>}</div></article></section>
+      <section className="mt-5 rounded-[14px] p-5" style={{background:'var(--c-card)',border:'1px solid var(--c-border)'}}><h2 className="text-[15px] font-semibold" style={{color:'var(--c-text)'}}>From field evidence to schedule truth</h2><p className="mt-1 text-[12px]" style={{color:'var(--c-muted)'}}>Extraction suggests. Authorized people verify. Only verified decisions update actuals.</p><ExecutionFlow/></section></>}
   </div>
 }

@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { extractReportIntelligence } from './intelligence.ts'
+import { parseUploadedReport } from './report-ingestion.ts'
 
 export interface Config { url: string; key: string; origins: string[] }
 class HttpError extends Error {
@@ -27,7 +29,7 @@ async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = []; let size=0
   for await (const chunk of req) {
     size += chunk.length
-    if (size > 131072) throw new HttpError(413, 'This report is too large for manual capture.')
+    if (size > 6291456) throw new HttpError(413, 'This request exceeds the 6 MB ingestion limit.')
     chunks.push(Buffer.from(chunk))
   }
   try {
@@ -46,6 +48,8 @@ function databaseError(error: { code?: string; message?: string }): never {
   if (message.includes('existing_actual_requires')) throw new HttpError(409, 'This activity already has that actual. Review the conflicting or duplicate report; no date was overwritten.')
   if (error.code === '40001' || error.code === '23505') throw new HttpError(409, 'The record changed or was already reviewed. Refresh before continuing.')
   if (message.includes('actual_date_not_supported')) throw new HttpError(422, 'A supported start or finish date is required. Partial observations cannot update actual dates.')
+  if (message.includes('invalid_report_ingestion') || message.includes('invalid_extraction_candidate')) throw new HttpError(422, 'The extracted report candidates did not pass project evidence validation.')
+  if (message.includes('suggested_activity_not_available')) throw new HttpError(422, 'A suggested activity is not an eligible L6 activity in the active schedule.')
   if (message.includes('granularity_requires')) throw new HttpError(422, 'This first release supports L6 approvals. L5 work needs further review.')
   if (message.includes('finish_before_start')) throw new HttpError(422, 'Actual finish cannot be earlier than actual start.')
   if (message.includes('idempotency_key_reused')) throw new HttpError(409, 'This request was already used with different input. Refresh and try again.')
@@ -88,7 +92,7 @@ export function createHandler(config: Config, makeClient: typeof createClient = 
         if (projects.error) databaseError(projects.error)
         return send(200,{user:{id:identity.user.id,email:identity.user.email},memberships:memberships.data,projects:projects.data})
       }
-      const match=pathname.match(/^\/api\/projects\/([^/]+)\/(workspace|events|reviews|members)(?:\/([^/]+))?$/)
+      const match=pathname.match(/^\/api\/projects\/([^/]+)\/(workspace|events|reviews|members|reports)(?:\/([^/]+))?$/)
       if (!match) throw new HttpError(404,'This endpoint does not exist.')
       const project=uuid(match[1]), action=match[2], target=match[3]
       const member=await client.from('sentinel_memberships').select('role').eq('project_id',project).eq('user_id',identity.user.id).eq('active',true).maybeSingle()
@@ -127,16 +131,19 @@ export function createHandler(config: Config, makeClient: typeof createClient = 
       if (req.method === 'GET' && action === 'workspace') {
         const current=await client.from('sentinel_projects').select('active_schedule_id').eq('id',project).single()
         if (current.error) databaseError(current.error)
-        const [events,activities,actuals,audit]=await Promise.all([
+        const [events,activities,actuals,audit,reports]=await Promise.all([
           client.from('sentinel_events').select('*,report:sentinel_reports(raw_text,report_date)').eq('project_id',project).order('created_at',{ascending:false}).limit(200),
           client.from('sentinel_activities').select('*').eq('project_id',project).eq('schedule_version_id',current.data.active_schedule_id ?? '00000000-0000-0000-0000-000000000000').order('external_id').limit(200),
           client.from('sentinel_schedule_actuals').select('*').eq('project_id',project).limit(200),
           ['planner','project-controls','administrator'].includes(role)
             ? client.from('sentinel_audit_events').select('*').eq('project_id',project).order('created_at',{ascending:false}).limit(50)
-            : Promise.resolve({data:[],error:null})
+            : Promise.resolve({data:[],error:null}),
+          // Selecting the row keeps existing core reads compatible while migration 004 is
+          // rolled out; Phase 10 fields appear automatically once the migration is present.
+          client.from('sentinel_reports').select('*').eq('project_id',project).order('created_at',{ascending:false}).limit(100)
         ])
-        for (const result of [events,activities,actuals,audit]) if (result.error) databaseError(result.error)
-        return send(200,{events:events.data,activities:activities.data,actuals:actuals.data,audit:audit.data,limit:200})
+        for (const result of [events,activities,actuals,audit,reports]) if (result.error) databaseError(result.error)
+        return send(200,{events:events.data,activities:activities.data,actuals:actuals.data,audit:audit.data,reports:reports.data,limit:200})
       }
       if (req.method !== 'POST') throw new HttpError(405,'This method is not supported.')
       const input=await body(req)
@@ -149,6 +156,31 @@ export function createHandler(config: Config, makeClient: typeof createClient = 
           p_project:project,p_request_key:uuid(input.request_key),p_report_date:date(input.report_date),
           p_text:text(input.text,50000),p_event_type:kind,p_actual_date:date(input.actual_date,true),p_source_quote:text(input.source_quote,50000)
         })
+      } else if (action === 'reports') {
+        if (!['site-supervisor','discipline-engineer','planner','project-controls','administrator'].includes(role)) throw new HttpError(403,'Your role cannot ingest reports.')
+        const filename=text(input.filename,240)
+        const mediaType=text(input.media_type,120)
+        const sourceSize=Number(input.source_size)
+        const contentBase64=input.content_base64
+        if(!Number.isInteger(sourceSize)||sourceSize<1||typeof contentBase64!=='string')throw new HttpError(400,'The report file metadata is invalid.')
+        let parsed
+        try{parsed=await parseUploadedReport({filename,mediaType,sourceSize,contentBase64})}
+        catch(cause){throw new HttpError(422,cause instanceof Error?cause.message:'The report could not be extracted.')}
+        const current=await client.from('sentinel_projects').select('active_schedule_id').eq('id',project).single()
+        if(current.error)databaseError(current.error)
+        const activities=await client.from('sentinel_activities').select('*').eq('project_id',project).eq('schedule_version_id',current.data.active_schedule_id??'00000000-0000-0000-0000-000000000000').eq('level','L6').limit(200)
+        if(activities.error)databaseError(activities.error)
+        const reportDate=date(input.report_date)
+        if(!reportDate)throw new HttpError(400,'Use a valid report date in YYYY-MM-DD format.')
+        const intelligence=await extractReportIntelligence({text:parsed.text,reportDate,activities:activities.data??[]})
+        result=await client.rpc('sentinel_ingest_report',{
+          p_project:project,p_request_key:uuid(input.request_key),p_report_date:reportDate,
+          p_filename:filename,p_media_type:mediaType,p_source_size:sourceSize,p_source_sha256:parsed.sha256,
+          p_text:parsed.text,p_candidates:intelligence.candidates,p_extraction_method:intelligence.method,
+          p_ai_status:intelligence.aiStatus,p_warnings:[...parsed.warnings,...intelligence.warnings],
+        })
+        if(result.error)databaseError(result.error)
+        return send(200,{id:result.data,candidate_count:intelligence.candidates.length,extraction_method:intelligence.method,ai_status:intelligence.aiStatus,warnings:[...parsed.warnings,...intelligence.warnings]})
       } else if (action === 'reviews') {
         if (!['planner','project-controls','administrator'].includes(role)) throw new HttpError(403,'Only a planner, project controls reviewer or project administrator can approve actuals.')
         if (!Number.isInteger(input.expected_revision) || Number(input.expected_revision)<1) throw new HttpError(400,'A valid event revision is required.')

@@ -5,10 +5,12 @@ interface CaptureChooserProps {
   open: boolean
   onClose: () => void
   onManualCapture: () => void
+  onUploadReport: () => void
 }
 
-export default function CaptureChooser({ open, onClose, onManualCapture }: CaptureChooserProps) {
+export default function CaptureChooser({ open, onClose, onManualCapture, onUploadReport }: CaptureChooserProps) {
   function openManualCapture() { onClose(); onManualCapture() }
+  function openReportUpload() { onClose(); onUploadReport() }
 
   return (
     <Modal open={open} onClose={onClose} aria-label="Capture Progress">
@@ -38,16 +40,16 @@ export default function CaptureChooser({ open, onClose, onManualCapture }: Captu
             <ChevronRight size={16} strokeWidth={2} style={{ color: '#F46F29', flexShrink: 0 }} />
           </button>
 
-          <button disabled className="flex cursor-not-allowed items-center gap-4 rounded-[14px] p-4 text-left opacity-60" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }} aria-describedby="upload-status">
+          <button onClick={openReportUpload} className="flex items-center gap-4 rounded-[14px] p-4 text-left" style={{ background: 'var(--c-page)', border: '1px solid var(--c-border)' }} aria-describedby="upload-status">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]" style={{ background: 'var(--c-border)' }}>
               <Upload size={18} strokeWidth={2} style={{ color: 'var(--c-muted)' }} />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <span className="text-[15px] font-semibold" style={{ color: 'var(--c-text)' }}>Upload report</span>
-                <span id="upload-status" className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: 'var(--c-border)', color: 'var(--c-subtle)', letterSpacing: '0.06em' }}>Coming later</span>
+                <span id="upload-status" className="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase" style={{ background: 'rgba(22,163,74,.12)', color: '#16A34A', letterSpacing: '0.06em' }}>Connected</span>
               </div>
-              <p className="mt-0.5 text-[13px]" style={{ color: 'var(--c-muted)' }}>File ingestion and attachments are not connected yet.</p>
+              <p className="mt-0.5 text-[13px]" style={{ color: 'var(--c-muted)' }}>Parse a supported field report into evidence-grounded pending events.</p>
             </div>
           </button>
         </div>

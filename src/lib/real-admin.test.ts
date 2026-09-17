@@ -20,6 +20,6 @@ test('connected overview uses persisted workspace values only',()=>{
   assert.equal(connectedOverview(workspace,false).recentAudit,null)
 })
 test('primary navigation contains connected product routes only',()=>{
-  assert.deepEqual([...PRIMARY_CONNECTED_ROUTES],['dashboard','actuals','schedule','review-queue','audit-log','admin'])
-  for(const route of ['reports','exceptions','performance','data-quality','exec-knowledge']) assert.equal(PRIMARY_CONNECTED_ROUTES.includes(route as never),false)
+  assert.deepEqual([...PRIMARY_CONNECTED_ROUTES],['dashboard','reports','actuals','schedule','review-queue','exceptions','performance','data-quality','execution-knowledge','integrations','audit-log','admin'])
+  for(const route of ['prototype','mock-reports','exec-knowledge']) assert.equal(PRIMARY_CONNECTED_ROUTES.includes(route as never),false)
 })

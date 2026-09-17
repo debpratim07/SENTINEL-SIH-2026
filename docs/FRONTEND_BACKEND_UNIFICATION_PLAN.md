@@ -1,5 +1,7 @@
 # FRONTEND–BACKEND UNIFICATION PLAN — SENTINEL
 
+> Historical plan: the Phase 9 connected-shell cutover superseded this migration plan. Phase 10 status and final-scope classifications are recorded in `PHASE_10_PARITY_MATRIX.md`.
+
 Scope: planning only, based on the local implementation checkpoint dated 14 September 2026. This plan does not authorize a redesign, AI work, asset integration, schema changes, permission changes or changes to current backend logic.
 
 ## A. Current architecture

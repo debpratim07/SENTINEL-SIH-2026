@@ -39,7 +39,7 @@ function AccountForm({initialError=''}:{initialError?:string}) {
       <button className="sw-primary" disabled={busy||!auth.configured}>{busy?'Please wait…':signup?'Create account':'Sign in'}</button>
     </form>
     <button className="sw-link" disabled={busy} onClick={()=>{setSignup(!signup);setError('');setMessage('')}}>{signup?'Already have an account? Sign in':'Create an account'}</button>
-    <a className="sw-link" href="/">View the original prototype with sample data</a>
+    <a className="sw-link" href="/">Open the primary SENTINEL application</a>
   </div></main>
 }
 
@@ -140,7 +140,7 @@ export default function ConnectedWorkspace({authError=''}:{authError?:string}) {
       {access.identity&&access.projects.length===0&&<section className="sw-card"><h2>Your account is ready</h2><p>Project access has not been assigned yet. Your project administrator must add you before you can view or submit work.</p><button onClick={()=>void access.refresh()}>Check access again</button></section>}
       {access.identity&&access.projects.length>0&&<>
         <div className="sw-project"><label>Project<select value={project} onChange={e=>access.selectProject(e.target.value)}>{access.projects.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select></label><span className="sw-badge">{readable(role)}</span></div>
-        <p className="sw-muted">Reports and approvals are saved to your project. AI matching is not enabled in this workflow yet.</p>
+        <p className="sw-muted">Reports and approvals are saved to your project. This engineering fallback keeps manual capture and review; report ingestion is available in the primary application.</p>
         <div className="sw-grid">{canCapture&&<CaptureForm key={project} project={project} onSaved={refresh}/>}
           <section className="sw-card"><p className="sw-eyebrow">{canReview?'REVIEW':'PROGRESS RECORDS'}</p><h2>Reported events</h2><p className="sw-muted">Showing up to {data.limit} latest events. Dates become trusted after authorized verification.</p>
             {!data.events.length&&<p>No events reported yet.</p>}

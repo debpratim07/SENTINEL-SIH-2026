@@ -1,5 +1,7 @@
 # CURRENT IMPLEMENTATION STATE — SENTINEL
 
+> Historical checkpoint: this document describes the 14 September 2026 foundation and is superseded by the Phase 9 accepted state plus `PHASE_10_PARITY_MATRIX.md`. It must not be used as the current product inventory.
+
 Checkpoint: **14 September 2026**. Active project: **SIH26122, Oil India Limited — field-report linking to L5/L6 schedule activities**. SIH26165 (UA/UC near-miss/SIF precursors) is historical context, not this implementation's scope.
 
 This document records existing implementation and previously completed validation. No application code, configuration, UI, assets or database records were changed for this checkpoint. Tests were not rerun for this documentation-only task.

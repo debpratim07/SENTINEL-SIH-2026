@@ -1,0 +1,12 @@
+{
+  "name": "SENTINEL",
+  "short_name": "SENTINEL",
+  "description": "Verified field execution intelligence for infrastructure projects.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#171A1F",
+  "theme_color": "#F46F29",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

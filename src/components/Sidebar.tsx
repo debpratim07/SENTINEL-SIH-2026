@@ -16,6 +16,12 @@ import {
   ChevronDown,
   PlusCircle,
   FolderOpen,
+  FileText,
+  AlertTriangle,
+  ChartNoAxesCombined,
+  DatabaseZap,
+  BrainCircuit,
+  Cable,
 } from 'lucide-react'
 
 // ── Logo — exact supplied artwork, ~12% reduced ──────────────────────────────
@@ -108,7 +114,11 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'EXECUTION',
-    items: [{ id: 'actuals', label: 'Verified Actuals', icon: ClipboardCheck }],
+    items: [
+      { id: 'reports', label: 'Reports', icon: FileText },
+      { id: 'actuals', label: 'Verified Actuals', icon: ClipboardCheck },
+      { id: 'exceptions', label: 'Exceptions', icon: AlertTriangle },
+    ],
   },
   {
     label: 'PLANNING',
@@ -119,8 +129,17 @@ const navGroups: NavGroup[] = [
     items: [{ id: 'review-queue', label: 'Review Queue', icon: ListChecks }],
   },
   {
+    label: 'INTELLIGENCE',
+    items: [
+      { id: 'performance', label: 'Performance', icon: ChartNoAxesCombined },
+      { id: 'data-quality', label: 'Data Quality', icon: DatabaseZap },
+      { id: 'execution-knowledge', label: 'Execution Knowledge', icon: BrainCircuit },
+    ],
+  },
+  {
     label: 'SYSTEM',
     items: [
+      { id: 'integrations', label: 'Integrations', icon: Cable },
       { id: 'audit-log', label: 'Audit Log', icon: ScrollText },
       { id: 'admin', label: 'Administration', icon: Settings2 },
     ],

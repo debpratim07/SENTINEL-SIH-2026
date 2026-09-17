@@ -15,7 +15,9 @@ function mockClient(role:string|null='planner', valid=true, rpcError?:{code?:str
     return {
       auth:{getUser:async(token:string)=>{calls.token=token;return {data:{user:valid?{id:user,email:'test@example.invalid'}:null},error:valid?null:{message:'invalid'}}}},
       from:(table:string)=>{
-        const data=table==='sentinel_memberships'?(role?{role}:null):[]
+        const data=table==='sentinel_memberships'?(role?{role}:null):
+          table==='sentinel_projects'?{active_schedule_id:key}:
+          table==='sentinel_activities'?[{id:key,project_id:project,schedule_version_id:key,external_id:'P-205',parent_id:null,level:'L6',name:'Erect process line',discipline:'Piping',area:'Area B',equipment_ref:'P-205',planned_start:'2026-08-25',planned_finish:'2026-08-28'}]:[]
         const query={select:()=>query,eq:()=>query,order:()=>query,limit:()=>query,
           maybeSingle:async()=>({data,error:null}),single:async()=>({data,error:null}),
           then:(resolve:(value:unknown)=>unknown)=>Promise.resolve({data,error:null}).then(resolve)}
@@ -58,11 +60,26 @@ test('API cannot turn a client-provided role into approval authority',async()=>{
   const result=await request({...post,path:`/api/projects/${project}/reviews`,role:'site-supervisor',raw:JSON.stringify({role:'planner',event_id:key,activity_id:key,request_key:key,expected_revision:1,reason:'Checked'})})
   assert.equal(result.status,403);assert.equal(result.calls.rpc,undefined)
 })
-test('API rejects malformed JSON, impossible dates, invalid IDs and oversized reports',async()=>{
+test('API rejects malformed JSON, impossible dates, invalid IDs and oversized manual evidence',async()=>{
   assert.equal((await request({...post,raw:'invalid'})).status,400)
   assert.equal((await request({...post,raw:JSON.stringify({...payload,actual_date:'2026-02-30'})})).status,400)
   assert.equal((await request({...post,raw:JSON.stringify({...payload,request_key:'bad'})})).status,400)
-  assert.equal((await request({...post,raw:JSON.stringify({...payload,text:'x'.repeat(140000)})})).status,413)
+  assert.equal((await request({...post,raw:JSON.stringify({...payload,text:'x'.repeat(140000)})})).status,400)
+})
+test('report ingestion is server parsed, evidence grounded and pending for human review',async()=>{
+  const source='P-205 started on 2026-08-25.'
+  const result=await request({role:'discipline-engineer',method:'POST',path:`/api/projects/${project}/reports`,headers:{authorization:'Bearer valid-token','content-type':'application/json'},raw:JSON.stringify({
+    request_key:key,report_date:'2026-08-25',filename:'daily-report.txt',media_type:'text/plain',source_size:Buffer.byteLength(source),content_base64:Buffer.from(source).toString('base64'),
+  })})
+  assert.equal(result.status,200);assert.equal(result.calls.rpc,'sentinel_ingest_report')
+  assert.equal(result.calls.params?.p_project,project);assert.equal(result.calls.params?.p_text,source)
+  assert.equal(result.data.candidate_count,1);assert.equal(result.data.ai_status,'unavailable')
+})
+test('report ingestion rejects unsupported files and unauthorized roles',async()=>{
+  const input={request_key:key,report_date:'2026-08-25',filename:'unsafe.exe',media_type:'application/octet-stream',source_size:4,content_base64:'dGVzdA=='}
+  const route={method:'POST',path:`/api/projects/${project}/reports`,headers:{authorization:'Bearer valid-token','content-type':'application/json'},raw:JSON.stringify(input)}
+  assert.equal((await request({...route,role:'project-manager'})).status,403)
+  assert.equal((await request({...route,role:'planner'})).status,422)
 })
 test('unrecognized routes and unsupported methods fail explicitly',async()=>{
   assert.equal((await request({path:'/api/admin/assign-role'})).status,404)

@@ -71,16 +71,41 @@ export interface ProposedEvent {
   event_type: 'start' | 'finish' | 'progress_observation'
   actual_date: string | null
   source_quote: string
+  source_location?: string | null
+  origin?: 'manual' | 'extraction'
+  extraction_method?: 'manual' | 'deterministic' | 'ai'
+  suggested_activity_id?: string | null
+  suggestion_reason?: string | null
+  confidence?: number | null
   revision: number
   review_status: 'pending' | 'verified'
+  created_at?: string
   report: FieldReport | null
+}
+
+export interface IngestedReport {
+  id: string
+  project_id: string
+  submitted_by: string
+  report_date: string
+  raw_text: string
+  filename: string | null
+  media_type: string | null
+  source_size: number | null
+  source_sha256: string | null
+  source_kind: 'manual' | 'upload'
+  processing_status: 'uploaded' | 'processing' | 'processed' | 'failed'
+  processing_error: string | null
+  extraction_method: 'manual' | 'deterministic' | 'ai' | null
+  extraction_metadata: Record<string, unknown>
+  created_at: string
 }
 
 export interface AuditItem {
   id: string
   project_id: string
   actor_id: string
-  action: 'event_captured' | 'actual_verified' | 'membership_changed'
+  action: 'event_captured' | 'actual_verified' | 'membership_changed' | 'report_ingested'
   record_id: string
   detail: Record<string, unknown>
   created_at: string
@@ -91,7 +116,25 @@ export interface ProjectWorkspaceResponse {
   activities: ScheduleActivity[]
   actuals: ScheduleActual[]
   audit: AuditItem[]
+  reports?: IngestedReport[]
   limit: number
+}
+
+export interface ReportUploadInput {
+  request_key: string
+  report_date: string
+  filename: string
+  media_type: string
+  source_size: number
+  content_base64: string
+}
+
+export interface ReportUploadResponse {
+  id: string
+  candidate_count: number
+  extraction_method: 'deterministic' | 'ai'
+  ai_status: 'used' | 'unavailable' | 'failed'
+  warnings: string[]
 }
 
 export interface ManualCaptureInput {

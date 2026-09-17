@@ -4,6 +4,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditItem['action'], string> = {
   event_captured: 'Field Event Captured',
   actual_verified: 'Actual Verified',
   membership_changed: 'Membership Changed',
+  report_ingested: 'Report Ingested',
 }
 
 const DETAIL_LABELS: Record<string, string> = {
@@ -22,6 +23,11 @@ const DETAIL_LABELS: Record<string, string> = {
   previous_active: 'Previous access state',
   new_active: 'New access state',
   operation: 'Membership operation',
+  filename: 'Source filename',
+  candidate_count: 'Candidate events',
+  extraction_method: 'Extraction method',
+  ai_status: 'AI provider status',
+  source_sha256: 'Source SHA-256',
 }
 
 const DETAIL_ORDER = Object.keys(DETAIL_LABELS)

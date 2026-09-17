@@ -32,6 +32,15 @@ async function approve(event, activity = A, user = PLAN, key = next(), revision 
     [project,event,activity,revision,key,reason]);
   return result.rows[0].id;
 }
+async function ingest(user = SUP, key = next(), project = P, candidates = [{
+  event_type:'start',actual_date:'2026-08-26',source_quote:'Pump installation started.',
+  source_location:'Paragraph 1',suggested_activity_id:A,suggestion_reason:'Exact equipment reference.',confidence:0.9,
+}]) {
+  const result=await as(user,'select public.sentinel_ingest_report($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12::jsonb) as id',[
+    project,key,'2026-08-28','daily-report.txt','text/plain',26,'a'.repeat(64),'Pump installation started.',JSON.stringify(candidates),'deterministic','unavailable','[]',
+  ]);
+  return result.rows[0].id;
+}
 async function count(table) { return Number((await db.query(`select count(*) as n from public.${table}`)).rows[0].n); }
 
 before(async () => {
@@ -47,6 +56,7 @@ before(async () => {
   await db.exec(await readFile(new URL('../migrations/001_manual_reconciliation.sql', import.meta.url), 'utf8'));
   await db.exec(await readFile(new URL('../migrations/002_administrator_workflow.sql', import.meta.url), 'utf8'));
   await db.exec(await readFile(new URL('../migrations/003_admin_membership_management.sql', import.meta.url), 'utf8'));
+  await db.exec(await readFile(new URL('../migrations/004_phase10_ingestion.sql', import.meta.url), 'utf8'));
   for (const user of [SUP,PLAN,PM,ADMIN,OTHER,CONTROL,ENG,REVOKED,MEMBER]) await db.query('insert into auth.users(id,email) values($1,$2)',[user,`${user}@example.test`]);
   await db.query('insert into public.sentinel_projects(id,name) values($1,$2),($3,$4)',[P,'Synthetic project A',Q,'Synthetic project B']);
   for (const [user, role] of roles) await db.query('insert into public.sentinel_memberships(project_id,user_id,role) values($1,$2,$3)',[P,user,role]);
@@ -99,6 +109,21 @@ test('capture persists evidence and retry returns the same event', async () => {
   assert.equal(await count('sentinel_reports'),initial+1);
   await assert.rejects(capture(SUP,'start','2026-08-27',key), /idempotency_key_reused/);
   assert.equal((await as(SUP,'select review_status from public.sentinel_events where id=$1',[first])).rows[0].review_status,'pending');
+});
+test('report ingestion preserves provenance and creates pending candidates only', async()=>{
+  const key=next(), report=await ingest(SUP,key);
+  assert.equal(await ingest(SUP,key),report);
+  const stored=(await as(SUP,'select filename,source_kind,processing_status,extraction_method,source_sha256 from public.sentinel_reports where id=$1',[report])).rows[0];
+  assert.deepEqual(stored,{filename:'daily-report.txt',source_kind:'upload',processing_status:'processed',extraction_method:'deterministic',source_sha256:'a'.repeat(64)});
+  const event=(await as(SUP,'select review_status,origin,source_location,suggested_activity_id,confidence::text from public.sentinel_events where report_id=$1',[report])).rows[0];
+  assert.deepEqual(event,{review_status:'pending',origin:'extraction',source_location:'Paragraph 1',suggested_activity_id:A,confidence:'0.9'});
+  assert.equal((await db.query('select * from public.sentinel_schedule_actuals where activity_id=$1',[A])).rows.length,0);
+  assert.equal((await as(PLAN,"select count(*)::int as n from public.sentinel_audit_events where action='report_ingested' and record_id=$1",[report])).rows[0].n,1);
+});
+test('report ingestion rejects ungrounded, unauthorized and cross-project candidates atomically', async()=>{
+  await assert.rejects(ingest(PM),/project_permission_denied/);
+  await assert.rejects(ingest(SUP,next(),P,[{event_type:'start',actual_date:'2026-08-26',source_quote:'Invented quote.'}]),/invalid_extraction_candidate/);
+  await assert.rejects(ingest(SUP,next(),P,[{event_type:'start',actual_date:'2026-08-26',source_quote:'Pump installation started.',suggested_activity_id:QA}]),/suggested_activity_not_available/);
 });
 test('capture enforces permissions, source quote grounding and report date bounds', async () => {
   for (const user of [PM,OTHER,REVOKED]) await assert.rejects(capture(user),/project_permission_denied/);

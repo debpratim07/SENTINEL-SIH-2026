@@ -1,5 +1,9 @@
 {
-  "description": "Capture actual progress and reconcile schedules for infrastructure projects with a premium, user-friendly dashboard designed for project managers.",
+  "title": "SENTINEL",
+  "description": "Verified field execution intelligence for infrastructure projects.",
+  "icons": {
+    "icon": "/favicon.svg"
+  },
   "robots": {
     "index": false
   },

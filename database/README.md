@@ -1,12 +1,12 @@
 # SENTINEL database foundation
 
-Active scope: SIH26122, Oil India Limited L5/L6 schedule reconciliation.
+Active scope: SIH26122 heavy-industry L5/L6 schedule reconciliation.
 
 ## Applied infrastructure
 
 On 13 September 2026, the existing Supabase project `puxealxppuujrxheqbmh` in organization SENTINEL was resumed with user authorization. Its region is `ap-northeast-2` (Seoul); no paid upgrade was requested.
 
-The inventory found no application tables, auth users or storage buckets. Migration `001_manual_reconciliation.sql` was applied successfully. Hosted verification returned 10 tables with RLS enabled, 9 read policies, no anonymous approval permission and no direct authenticated write permission on schedule actuals. The first schema version is `001_manual_reconciliation`. Migration `002_administrator_workflow` was subsequently applied on 14 September 2026, enabling assigned project administrators to capture and approve through the same guarded functions. Migration `003_admin_membership_management.sql` was applied on 15 September 2026. It adds guarded project-member list, exact-email assignment, role change, deactivation/reactivation, last-active-administrator protection, and `membership_changed` audit history.
+The inventory found no application tables, auth users or storage buckets. Migration `001_manual_reconciliation.sql` was applied successfully. Hosted verification returned 10 tables with RLS enabled, 9 read policies, no anonymous approval permission and no direct authenticated write permission on schedule actuals. The first schema version is `001_manual_reconciliation`. Migration `002_administrator_workflow` was subsequently applied on 14 September 2026, enabling assigned project administrators to capture and approve through the same guarded functions. Migration `003_admin_membership_management.sql` was applied on 15 September 2026. It adds guarded project-member list, exact-email assignment, role change, deactivation/reactivation, last-active-administrator protection, and `membership_changed` audit history. Migration `004_phase10_ingestion.sql` adds upload provenance, extracted-event metadata and the guarded `sentinel_ingest_report` transaction. It is validated locally and must be applied to each hosted environment before report uploads are enabled there.
 
 `seeds/001_synthetic_schedule.sql` was also applied. It adds **SENTINEL Competition Demo (Synthetic)**, an August 2026 schedule version, one L5 parent and three L6 pump alignment activities. It creates no accounts, memberships, reports or actual dates. The seed is repeatable; apply the migration only once.
 
@@ -36,17 +36,17 @@ An administrator label comes only from an active project membership. Administrat
 
 ## Validation
 
-Run `pnpm install --frozen-lockfile` and `pnpm test` from this directory. All 20 tests passed using PGlite PostgreSQL with a minimal test auth schema. Coverage includes isolation, permissions, exact evidence, dates, retries, stale revisions, L5 rejection, duplicate/conflicting actual protection, finish-without-start, audit visibility, transactional rollback, repeatable seeding, exact-email membership assignment, role/state changes, cross-project rejection and last-administrator protection.
+Run `pnpm install --frozen-lockfile` and `pnpm test` from this directory. All 22 tests pass using PGlite PostgreSQL with a minimal test auth schema. Coverage includes isolation, permissions, exact evidence, report provenance, pending-only extraction, atomic cross-project rejection, dates, retries, stale revisions, L5 rejection, duplicate/conflicting actual protection, finish-without-start, audit visibility, transactional rollback, repeatable seeding, exact-email membership assignment, role/state changes, cross-project rejection and last-administrator protection.
 
 These are sequential database tests, not live Supabase session tests or multi-connection concurrency stress tests. Two accounts have since been confirmed, and real signed-in identity lookup was checked in the browser. The requested administrator membership is assigned. The live administrator capture/approval/full-reload browser check passed on 14 September 2026; one synthetic P-204 start event is verified and its two audit actions persist. A second, unassigned account was verified to see no project data.
 
 ## Known limits
 
-- One manually described event per submitted report; no AI extraction or matching.
+- Manual capture stores one event; uploaded reports may create up to 50 evidence-grounded pending candidates. AI suggestions never verify an actual.
 - L6 actual dates only. L5 rollups and full imported-hierarchy validation are future work.
 - Missing dates and partial observations can be stored but cannot update actual dates.
 - Existing verified actuals cannot be overwritten. Rejection, clarification, correction and conflict-resolution workflows are not implemented. Potential conflicts among pending reports are not automatically linked.
-- No schedule import, attachments, scheduling-system writeback, push updates or production deployment.
+- No scanned-image OCR, schedule import, scheduling-system writeback or push updates. Uploaded source bytes are processed transiently; extracted text and source hash are retained, not the original binary attachment.
 - Reads are capped at 200 events/activities/actuals and 50 audit entries. Pagination is needed for large schedules; independent reads are not one consistent snapshot.
 - Locking and uniqueness protect writes by design; live concurrency, backup/restore and deployment hardening remain unverified.
 

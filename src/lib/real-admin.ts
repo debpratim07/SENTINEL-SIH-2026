@@ -23,4 +23,4 @@ export function connectedOverview(workspace: ProjectWorkspaceResponse, canSeeAud
   }
 }
 
-export const PRIMARY_CONNECTED_ROUTES = ['dashboard','actuals','schedule','review-queue','audit-log','admin'] as const
+export const PRIMARY_CONNECTED_ROUTES = ['dashboard','reports','actuals','schedule','review-queue','exceptions','performance','data-quality','execution-knowledge','integrations','audit-log','admin'] as const
