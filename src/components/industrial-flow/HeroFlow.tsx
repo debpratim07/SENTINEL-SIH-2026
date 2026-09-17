@@ -9,6 +9,7 @@ const routes = [
  'M410 200H458Q474 200 474 216V264Q474 280 490 280H546',
  'M578 280H610Q626 280 626 264V216Q626 200 642 200H666',
 ];
+const continuousRoute = routes.join(' ');
 export function HeroFlow({ animated = true, className, ...props }: IllustrationProps) {
  return <Artwork {...props} viewBox="0 0 720 400" className={cx('if-hero', className)} data-animate={animated}>
   <g className="if-desktop-art">
@@ -21,7 +22,8 @@ export function HeroFlow({ animated = true, className, ...props }: IllustrationP
    <g className="if-ambient" opacity=".55"><circle cx="398" cy="200" r="42" className="if-technical"/><circle cx="398" cy="200" r="58" className="if-technical" strokeDasharray="2 9"/></g>
    <FlowPath d="M72 200H124Q140 200 140 216V264Q140 280 156 280H302Q318 280 318 264V216Q318 200 334 200H386"/>
    <FlowPath d="M410 200H450Q466 200 466 184V136Q466 120 482 120H578Q594 120 594 136V184Q594 200 610 200H666"/>
-   {routes.map((d,i)=><g key={d}><FlowPath d={d} state="flowing"/><FlowPulse d={d} animated={animated} delay={i*360} duration={480}/></g>)}
+   {routes.map((d)=><FlowPath key={d} d={d} state="flowing"/>)}
+   <FlowPulse d={continuousRoute} animated={animated} duration={4200} loop/>
    <FlowJunction x={140} y={200}/><FlowJunction x={318} y={280}/><FlowJunction x={594} y={200}/>
    <g className="if-technical"><path d="M230 100l40 40M230 140l40-40"/><rect x="228" y="98" width="44" height="44" rx="12" stroke="var(--if-accent)" fill="var(--if-accent-soft)"/></g>
    <FlowNode x={72} y={200} radius={14} state="active" className="if-hero-node" style={{'--if-delay':'0ms'} as CSSVars}/>
@@ -35,7 +37,7 @@ export function HeroFlow({ animated = true, className, ...props }: IllustrationP
   <g className="if-mobile-art" transform="translate(40 25)">
    <path className="if-technical" d="M42 70h556M42 280h556" strokeDasharray="2 10"/>
    <FlowPath d="M64 170H198Q214 170 214 154V116Q214 100 230 100H302Q318 100 318 116V224Q318 240 334 240H410Q426 240 426 224V186Q426 170 442 170H576" state="flowing"/>
-   <FlowPulse d="M64 170H198Q214 170 214 154V116Q214 100 230 100H302Q318 100 318 116V224Q318 240 334 240H410Q426 240 426 224V186Q426 170 442 170H576" duration={1440} animated={animated}/>
+   <FlowPulse d="M64 170H198Q214 170 214 154V116Q214 100 230 100H302Q318 100 318 116V224Q318 240 334 240H410Q426 240 426 224V186Q426 170 442 170H576" duration={4200} animated={animated} loop/>
    {[[64,170],[264,100],[372,240],[576,170]].map(([x,y],i)=><FlowNode key={i} x={x} y={y} radius={17} shape={i%2 ? 'square':'circle'} state="active" className="if-hero-node" style={{'--if-delay':`${i*360}ms`} as CSSVars}/>)}
   </g>
  </Artwork>;
